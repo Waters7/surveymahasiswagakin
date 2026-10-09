@@ -4,6 +4,7 @@ use App\Models\SurveyAssignment;
 use App\Models\TravelLink;
 use App\Models\User;
 use App\Notifications\SurveyNotice;
+use App\Services\DeliverySchedule;
 use App\Services\ImportService;
 use App\Services\TravelReportBuilder;
 use Illuminate\Support\Facades\Artisan;
@@ -36,3 +37,8 @@ Artisan::command('gakin:prepare-reports', function () {
 });
 Schedule::command('gakin:remind')->dailyAt('16:00')->timezone('Asia/Makassar')->withoutOverlapping();
 Schedule::command('gakin:prepare-reports')->everyFifteenMinutes()->withoutOverlapping();
+
+Artisan::command('gakin:delivery-reminder', function (DeliverySchedule $schedule): void {
+    $this->info($schedule->remindDue() ? 'Pengingat jadwal dicatat. Tidak ada data dikirim keluar.' : 'Belum ada jadwal baru yang jatuh tempo.');
+});
+Schedule::command('gakin:delivery-reminder')->everyMinute()->withoutOverlapping();

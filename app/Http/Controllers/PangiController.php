@@ -6,6 +6,7 @@ use App\Jobs\SyncPangiDraft;
 use App\Models\SurveyAssignment;
 use App\Models\TravelLink;
 use App\Services\Audit;
+use App\Services\DeliverySchedule;
 use App\Services\PangiClient;
 use App\Services\TravelReportBuilder;
 use Illuminate\Contracts\View\View;
@@ -20,9 +21,17 @@ class PangiController extends Controller
         abort_unless($t->user_id === auth()->id() && auth()->user()->can('pangi.use'), 403);
     }
 
-    public function index(): View
+    public function index(DeliverySchedule $schedule): View
     {
-        return view('pangi', ['travels' => TravelLink::with('user')->when(! auth()->user()->can('surveys.view-all'), fn ($q) => $q->where('user_id', auth()->id()))->latest()->get()]);
+        return view('pangi', ['schedule' => $schedule->settings(), 'nextRun' => $schedule->nextRun(), 'travels' => TravelLink::with('user')->when(! auth()->user()->can('surveys.view-all'), fn ($q) => $q->where('user_id', auth()->id()))->latest()->get()]);
+    }
+
+    public function saveSchedule(Request $request, DeliverySchedule $schedule): RedirectResponse
+    {
+        $data = $request->validate(['enabled' => 'required|boolean', 'time' => 'required|date_format:H:i'], ['time.date_format' => 'Waktu harus menggunakan format jam dan menit yang valid.']);
+        $schedule->save((bool) $data['enabled'], $data['time']);
+
+        return redirect()->route('pangi.index')->with('status', 'Jadwal harian tersimpan. Pengiriman eksternal tetap menunggu aktivasi integrasi.');
     }
 
     public function fetch(PangiClient $client): View

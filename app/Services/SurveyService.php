@@ -29,7 +29,7 @@ class SurveyService
             if ($a->travel) {
                 abort_unless(today()->betweenIncluded($a->travel->starts_at, $a->travel->ends_at), 422, 'Tanggal kunjungan di luar periode perjalanan.');
             } abort_unless($form->published, 422, 'Form belum dipublikasikan.');
-            $s = Survey::create(['survey_assignment_id' => $a->id, 'student_id' => $a->student_id, 'user_id' => $a->user_id, 'survey_form_version_id' => $form->id, 'travel_link_id' => $a->travel_link_id, 'criteria_snapshot' => $form->criteria->map->only(['id', 'position', 'label', 'evidence_mode', 'weight'])->all(), 'rules_snapshot' => $a->period->rule?->only(['minimum_criteria', 'minimum_weight', 'pkh_recommended', 'auto_suggest']) ?? [], 'settings_snapshot' => SystemSetting::allValues(), 'student_snapshot' => $a->student->load('program', 'parents', 'address')->toArray(), 'started_at' => now(), 'status' => 'draft']);
+            $s = Survey::create(['survey_assignment_id' => $a->id, 'student_id' => $a->student_id, 'user_id' => $a->user_id, 'survey_form_version_id' => $form->id, 'travel_link_id' => $a->travel_link_id, 'criteria_snapshot' => $form->criteria->map->only(['id', 'position', 'label', 'evidence_mode', 'weight'])->all(), 'rules_snapshot' => $a->period->rule?->only(['minimum_criteria', 'minimum_weight', 'pkh_recommended', 'auto_suggest']) ?? [], 'settings_snapshot' => array_diff_key(SystemSetting::allValues(), [DeliverySchedule::KEY => true]), 'student_snapshot' => $a->student->load('program', 'parents', 'address')->toArray(), 'started_at' => now(), 'status' => 'draft']);
             foreach ($s->criteria_snapshot as $c) {
                 $s->answers()->create(['criterion_id' => $c['id']]);
             }

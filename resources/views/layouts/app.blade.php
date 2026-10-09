@@ -4,7 +4,7 @@
 @can('students.manage')<a class="nav-item {{request()->is('students*')?'active':''}}" href="/students"><x-icon name="graduation-cap"/>Data mahasiswa</a>@endcan
 @can('imports.manage')<a class="nav-item {{request()->is('imports*')?'active':''}}" href="/imports"><x-icon name="file-up"/>Import data</a>@endcan
 @can('surveys.view-all')<a class="nav-item" href="/tasks?status=menunggu_verifikasi"><x-icon name="shield-check"/>Verifikasi</a>@endcan
-@can('pangi.use')<div class="nav-section">PERJALANAN DINAS</div><a class="nav-item {{request()->is('pangi*')?'active':''}}" href="/pangi"><x-icon name="route"/>Integrasi PANGI<span class="tag-small">API</span></a>@endcan
+@can('pangi.use')<div class="nav-section">PERJALANAN DINAS</div><a class="nav-item {{request()->is('pangi*')?'active':''}}" href="/pangi"><x-icon name="route"/>Pengiriman data<span class="tag-small">Jadwal</span></a>@endcan
 @if(auth()->user()->canAny(['masters.manage','users.manage','audit.view']))<div class="nav-section">ADMINISTRASI</div>@endif
 @can('users.manage')<a class="nav-item {{request()->is('users*')?'active':''}}" href="/users"><x-icon name="users"/>Pengguna</a>@endcan
 @can('masters.manage')<a class="nav-item {{request()->is('masters*')?'active':''}}" href="/masters"><x-icon name="sliders-horizontal"/>Master & pengaturan</a>@endcan

@@ -64,7 +64,8 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/masters', [AdminController::class, 'masterSave'])->middleware('can:masters.manage');
     Route::get('/audit', [AdminController::class, 'audit'])->middleware('can:audit.view');
     Route::middleware('can:pangi.use')->prefix('pangi')->group(function () {
-        Route::get('/', [PangiController::class, 'index']);
+        Route::get('/', [PangiController::class, 'index'])->name('pangi.index');
+        Route::post('/schedule', [PangiController::class, 'saveSchedule'])->middleware('can:masters.manage')->name('pangi.schedule.update');
         Route::get('/trips', [PangiController::class, 'fetch']);
         Route::post('/connect', [PangiController::class, 'connect']);
         Route::get('/{travel}', [PangiController::class, 'show']);

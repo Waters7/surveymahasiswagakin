@@ -4,7 +4,7 @@ Aplikasi Laravel untuk Poltekkes Kemenkes Manado: pengelolaan mahasiswa dan peng
 
 ## Menjalankan salinan lokal yang sudah disiapkan
 
-Jalankan `start-local.ps1`, lalu buka **http://127.0.0.1:8000**. Script memakai PHP/MySQL Laragon yang ditemukan di komputer ini. MySQL khusus aplikasi berada pada port 3307 dan data tersimpan di `.runtime/mysql`; layanan hanya mengikat localhost. Sesuaikan path di script bila instalasi Laragon dipindahkan.
+Jalankan `start-local.ps1`, lalu buka **http://127.0.0.1:8000**. Script memakai PHP/MySQL Laragon yang ditemukan di komputer ini, serta menjalankan scheduler pengingat selama proses lokal aktif. MySQL khusus aplikasi berada pada port 3307 dan data tersimpan di `.runtime/mysql`; layanan hanya mengikat localhost. Sesuaikan path di script bila instalasi Laragon dipindahkan.
 
 Kredensial awal ada di **storage/app/private/AKSES-LOKAL.txt**. Password dibuat acak dan wajib diganti saat login pertama. File tersebut, `.env`, data MySQL, dokumen sumber, serta hasil pengujian tidak boleh dimasukkan ke Git.
 
@@ -88,6 +88,12 @@ php artisan schedule:work
 Produksi: supervisor/systemd untuk queue, dan cron `* * * * * php /path/artisan schedule:run` untuk scheduler. `gakin:remind` memberi notifikasi in-app sehari sebelum jadwal pukul 16.00 WITA. `gakin:prepare-reports` mengecek setiap 15 menit apakah seluruh target perjalanan selesai dan menyiapkan draft. Tidak ada email/WhatsApp otomatis yang dikirim ke kontak sumber; tombol WhatsApp hanya membuka percakapan untuk pengguna.
 
 Upload foto HTTP dikompresi di browser dan dinormalisasi server; antrean offline menyimpan blob sampai pengiriman berhasil. Queue server digunakan untuk sinkronisasi PANGI dan retry. Notifikasi tersimpan di database.
+
+## Jadwal pengiriman data
+
+Menu **Pengiriman data** menyediakan jadwal harian default **16.00 WITA**. Admin dapat mengubah jam atau menjeda pengingat. Riwayat menyimpan 30 kejadian terakhir, dengan notifikasi in-app kepada admin aktif satu kali per hari. Bila jadwal baru dibuat setelah waktunya lewat, pengingat pertama berjalan esok hari. Komputer dan scheduler harus tetap menyala agar pengingat diproses.
+
+Integrasi eksternal ditunda. Scheduler ini tidak memanggil API, tidak mengantrekan pengiriman, dan tidak mengaktifkan PANGI secara otomatis, termasuk bila konfigurasi API nantinya berubah. Status riwayat tetap **Menunggu integrasi**. Pengiriman sebenarnya memerlukan pengembangan/aktivasi terpisah.
 
 ## Konfigurasi PANGI
 

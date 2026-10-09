@@ -9,6 +9,20 @@ if (-not (Get-NetTCPConnection -State Listen -LocalPort 3307 -ErrorAction Silent
 if (-not (Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue)) {
     Start-Process -FilePath $php -WorkingDirectory $projectRoot -ArgumentList @('artisan','serve','--host=127.0.0.1','--port=8000') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $projectRoot '.runtime/web-stdout.log') -RedirectStandardError (Join-Path $projectRoot '.runtime/web-stderr.log')
 }
+$schedulerPidFile = Join-Path $projectRoot '.runtime/scheduler.pid'
+$schedulerRunning = $false
+if (Test-Path -LiteralPath $schedulerPidFile) {
+    $schedulerProcessId = 0
+    if ([int]::TryParse((Get-Content -LiteralPath $schedulerPidFile -Raw).Trim(), [ref]$schedulerProcessId)) {
+        $schedulerProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $schedulerProcessId" -ErrorAction SilentlyContinue
+        $schedulerRunning = $schedulerProcess -and $schedulerProcess.ExecutablePath -eq $php -and $schedulerProcess.CommandLine.Contains((Join-Path $projectRoot 'artisan')) -and $schedulerProcess.CommandLine.Contains('schedule:work')
+    }
+}
+if (-not $schedulerRunning) {
+    $schedulerProcess = Start-Process -FilePath $php -WorkingDirectory $projectRoot -ArgumentList @(('"' + (Join-Path $projectRoot 'artisan') + '"'),'schedule:work','--no-interaction') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $projectRoot '.runtime/scheduler-stdout.log') -RedirectStandardError (Join-Path $projectRoot '.runtime/scheduler-stderr.log')
+    $schedulerProcess.Id | Set-Content -LiteralPath $schedulerPidFile
+}
+Write-Output 'Scheduler pengingat berjalan selama proses lokal aktif. Jadwal: setiap hari 16.00 WITA.'
 Write-Output 'Aplikasi: http://127.0.0.1:8000'
 Write-Output 'Password awal tersedia di storage/app/private/AKSES-LOKAL.txt'
 Write-Output 'Queue: php artisan queue:work --tries=3 --timeout=40'
