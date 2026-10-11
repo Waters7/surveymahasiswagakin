@@ -112,6 +112,9 @@ class SurveyService
         if (! ($settings['group_photo_required'] ?? true) && ! $s->photos->contains('kind', 'group') && ! $s->group_photo_reason) {
             $errors[] = 'Isi alasan tidak ada foto bersama.';
         }
+        if ($s->pkh === true && ! $s->photos->contains('kind', 'pkh')) {
+            $errors[] = 'Bukti penerima PKH wajib diunggah berupa foto atau dokumen PDF.';
+        }
         if ($s->pkh === null) {
             $errors[] = 'Status PKH belum diisi.';
         }

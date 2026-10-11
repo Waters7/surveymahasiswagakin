@@ -57,7 +57,7 @@ class ReportController extends Controller
         $survey->load('answers', 'signatures', 'photos', 'location', 'user');
         $qr = (new PngWriter)->write(new QrCode(data: url('/verify/'.$survey->verify_token), size: 140, margin: 5))->getDataUri();
         $signatures = $survey->signatures->mapWithKeys(fn ($s) => [$s->role => ['name' => $s->signed_by, 'image' => 'data:image/png;base64,'.base64_encode(Storage::disk('local')->get($s->path))]]);
-        $photos = $survey->photos->map(fn ($p) => ['caption' => $p->kind === 'group' ? 'Foto bersama' : 'Bukti kriteria '.$p->criterion_id, 'image' => 'data:image/jpeg;base64,'.base64_encode(Storage::disk('local')->get($p->path))]);
+        $photos = $survey->photos->map(fn ($p) => ['caption' => $p->label(), 'image' => $p->isPdf() ? null : 'data:image/jpeg;base64,'.base64_encode(Storage::disk('local')->get($p->path)), 'url' => url('/media/'.$p->uuid), 'filename' => $p->metadata['original_name'] ?? 'dokumen.pdf']);
         Audit::record('report.pdf', $survey);
 
         return Pdf::loadView('reports.survey', compact('survey', 'qr', 'signatures', 'photos'))->setPaper('a4')->setOption('isRemoteEnabled', false)->stream('survey-'.$survey->uuid.'.pdf');

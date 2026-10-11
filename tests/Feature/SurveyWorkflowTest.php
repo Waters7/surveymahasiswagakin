@@ -85,6 +85,8 @@ class SurveyWorkflowTest extends TestCase
         imagepng($im);
         $bytes = ob_get_clean();
         imagedestroy($im);
+        Storage::disk('local')->put('pkh-test.png', $bytes);
+        $s->photos()->create(['user_id' => $this->worker->id, 'kind' => 'pkh', 'path' => 'pkh-test.png', 'sha256' => hash('sha256', $bytes), 'metadata' => []]);
         foreach (['surveyor', 'parent'] as $role) {
             $path = 'signatures/'.$role.'.png';
             Storage::disk('local')->put($path, $bytes);

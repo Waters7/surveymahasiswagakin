@@ -14,6 +14,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -58,7 +59,11 @@ class SurveyController extends Controller
     public function photo(Request $r, Survey $survey, SurveyService $service): JsonResponse
     {
         Gate::authorize('update', $survey);
-        $d = $r->validate(['revision' => 'required|integer', 'photo' => 'required|image|mimes:jpg,jpeg,png,webp|max:10240|dimensions:max_width=10000,max_height=10000', 'kind' => 'required|in:evidence,group', 'criterion_id' => 'nullable|integer', 'captured_at' => 'nullable|date']);
+        $upload = $r->file('photo');
+        $photoRules = $r->input('kind') === 'pkh' && $upload instanceof UploadedFile && $upload->isValid() && $upload->getMimeType() === 'application/pdf'
+            ? 'required|file|mimes:pdf|max:10240'
+            : 'required|image|mimes:jpg,jpeg,png,webp|max:10240|dimensions:max_width=10000,max_height=10000';
+        $d = $r->validate(['revision' => 'required|integer', 'photo' => $photoRules, 'kind' => 'required|in:evidence,group,pkh', 'criterion_id' => 'nullable|integer', 'captured_at' => 'nullable|date']);
         $path = null;
         try {
             $s = $service->mutate($survey, (int) $d['revision'], function ($s) use ($r, $d, &$path) {
@@ -67,29 +72,35 @@ class SurveyController extends Controller
                     $criterion = collect($s->criteria_snapshot)->firstWhere('id', (int) $d['criterion_id']);
                     abort_unless($criterion && $criterion['evidence_mode'] !== 'disabled', 422);
                 }
+                $isPdf = $d['kind'] === 'pkh' && $r->file('photo')->getMimeType() === 'application/pdf';
                 $bytes = file_get_contents($r->file('photo')->getRealPath());
-                $im = imagecreatefromstring($bytes);
-                abort_unless($im, 422);
-                $width = imagesx($im);
-                $height = imagesy($im);
-                if (max($width, $height) > 1920) {
-                    $new = imagescale($im, (int) ($width * 1920 / max($width, $height)));
-                    imagedestroy($im);
-                    $im = $new;
+                if ($isPdf && ! str_starts_with($bytes, '%PDF-')) {
+                    throw ValidationException::withMessages(['photo' => 'Dokumen bukti PKH harus berupa PDF yang valid.']);
                 }
-                if ($s->settings_snapshot['watermark_enabled'] ?? true) {
-                    imagefilledrectangle($im, 0, imagesy($im) - 64, imagesx($im), imagesy($im), imagecolorallocate($im, 10, 45, 39));
-                    $white = imagecolorallocate($im, 255, 255, 255);
-                    imagestring($im, 3, 12, imagesy($im) - 54, 'SURVEY GAKIN | '.$s->student->name, $white);
-                    imagestring($im, 3, 12, imagesy($im) - 36, now()->format('d-m-Y H:i').' WITA | '.($s->location?->latitude ?? 'GPS belum diambil').', '.($s->location?->longitude ?? ''), $white);
-                    imagestring($im, 3, 12, imagesy($im) - 18, 'Poltekkes Kemenkes Manado', $white);
-                }ob_start();
-                imagejpeg($im, null, 85);
-                $bytes = ob_get_clean();
-                imagedestroy($im);
-                $path = 'surveys/'.$s->uuid.'/'.Str::uuid().'.jpg';
+                if (! $isPdf) {
+                    $im = imagecreatefromstring($bytes);
+                    abort_unless($im, 422);
+                    $width = imagesx($im);
+                    $height = imagesy($im);
+                    if (max($width, $height) > 1920) {
+                        $new = imagescale($im, (int) ($width * 1920 / max($width, $height)));
+                        imagedestroy($im);
+                        $im = $new;
+                    }
+                    if ($d['kind'] !== 'pkh' && ($s->settings_snapshot['watermark_enabled'] ?? true)) {
+                        imagefilledrectangle($im, 0, imagesy($im) - 64, imagesx($im), imagesy($im), imagecolorallocate($im, 10, 45, 39));
+                        $white = imagecolorallocate($im, 255, 255, 255);
+                        imagestring($im, 3, 12, imagesy($im) - 54, 'SURVEY GAKIN | '.$s->student->name, $white);
+                        imagestring($im, 3, 12, imagesy($im) - 36, now()->format('d-m-Y H:i').' WITA | '.($s->location?->latitude ?? 'GPS belum diambil').', '.($s->location?->longitude ?? ''), $white);
+                        imagestring($im, 3, 12, imagesy($im) - 18, 'Poltekkes Kemenkes Manado', $white);
+                    }ob_start();
+                    imagejpeg($im, null, 85);
+                    $bytes = ob_get_clean();
+                    imagedestroy($im);
+                }
+                $path = 'surveys/'.$s->uuid.'/'.Str::uuid().($isPdf ? '.pdf' : '.jpg');
                 Storage::disk('local')->put($path, $bytes);
-                $p = $s->photos()->create(['user_id' => auth()->id(), 'criterion_id' => $d['kind'] === 'evidence' ? $d['criterion_id'] : null, 'kind' => $d['kind'], 'path' => $path, 'sha256' => hash('sha256', $bytes), 'metadata' => ['captured_at' => $d['captured_at'] ?? null, 'uploaded_at' => now()->toIso8601String(), 'location' => $s->location?->only(['latitude', 'longitude', 'accuracy']), 'device' => mb_substr($r->userAgent() ?? '', 0, 1000)]]);
+                $p = $s->photos()->create(['user_id' => auth()->id(), 'criterion_id' => $d['kind'] === 'evidence' ? $d['criterion_id'] : null, 'kind' => $d['kind'], 'path' => $path, 'sha256' => hash('sha256', $bytes), 'metadata' => ['mime' => $isPdf ? 'application/pdf' : 'image/jpeg', 'original_name' => mb_substr($r->file('photo')->getClientOriginalName(), 0, 255), 'captured_at' => $d['captured_at'] ?? null, 'uploaded_at' => now()->toIso8601String(), 'location' => $s->location?->only(['latitude', 'longitude', 'accuracy']), 'device' => mb_substr($r->userAgent() ?? '', 0, 1000)]]);
                 if ($p->criterion_id) {
                     SurveyAnswerEvidence::create(['survey_answer_id' => $s->answers()->where('criterion_id', $p->criterion_id)->firstOrFail()->id, 'survey_photo_id' => $p->id]);
                 }
@@ -113,14 +124,14 @@ class SurveyController extends Controller
         });
         Storage::disk('local')->delete($photo->path);
 
-        return response()->json(['revision' => $s->revision]);
+        return response()->json(['revision' => $s->revision, 'pkh_evidence_count' => $s->photos()->where('kind', 'pkh')->count()]);
     }
 
     public function media(SurveyPhoto $photo): StreamedResponse
     {
         Gate::authorize('view', $photo->survey);
 
-        return Storage::disk('local')->response($photo->path, null, ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+        return Storage::disk('local')->response($photo->path, null, ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'], $photo->isPdf() ? 'attachment' : 'inline');
     }
 
     public function signature(Request $r, Survey $survey, SurveyService $service): JsonResponse

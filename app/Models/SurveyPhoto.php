@@ -11,6 +11,20 @@ class SurveyPhoto extends Record
         return ['metadata' => 'array'];
     }
 
+    public function isPdf(): bool
+    {
+        return ($this->metadata['mime'] ?? null) === 'application/pdf';
+    }
+
+    public function label(): string
+    {
+        return match ($this->kind) {
+            'pkh' => 'Bukti penerima PKH',
+            'group' => 'Foto bersama',
+            default => 'Bukti kriteria '.$this->criterion_id,
+        };
+    }
+
     public function survey(): BelongsTo
     {
         return $this->belongsTo(Survey::class);
