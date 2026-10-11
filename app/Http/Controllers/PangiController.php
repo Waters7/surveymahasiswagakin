@@ -66,7 +66,7 @@ class PangiController extends Controller
             abort_if(in_array($t->status, ['queued', 'locked']), 409);
             foreach ($d['assignments'] as $id) {
                 $a = SurveyAssignment::lockForUpdate()->findOrFail($id);
-                abort_unless($a->user_id === auth()->id() && ! $a->survey && ! $a->travel_link_id && $a->scheduled_at && $a->scheduled_at->betweenIncluded($t->starts_at, $t->ends_at), 422, 'Penugasan harus milik Anda, belum dimulai, dan terjadwal dalam rentang perjalanan.');
+                abort_unless($a->user_id === auth()->id() && ! $a->survey && ! $a->travel_link_id && $a->scheduled_at && $a->scheduled_at->betweenIncluded($t->starts_at, $t->ends_at) && ($a->scheduled_until ?? $a->scheduled_at)->betweenIncluded($t->starts_at, $t->ends_at), 422, 'Penugasan harus milik Anda, belum dimulai, dan terjadwal dalam rentang perjalanan.');
                 $a->update(['travel_link_id' => $t->id]);
             }app(TravelReportBuilder::class)->invalidate($t);
             Audit::record('pangi.assignments_linked', $t);

@@ -21,7 +21,7 @@ class AssignmentQuery
             }
         }
         if ($v = $filters['date'] ?? null) {
-            $q->whereDate('scheduled_at', $v);
+            $q->whereDate('scheduled_at', '<=', $v)->where(fn ($range) => $range->whereDate('scheduled_until', '>=', $v)->orWhere(fn ($single) => $single->whereNull('scheduled_until')->whereDate('scheduled_at', $v)));
         }
         if ($v = $filters['program'] ?? null) {
             $q->whereHas('student', fn ($s) => $s->where('study_program_id', $v));
