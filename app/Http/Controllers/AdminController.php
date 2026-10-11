@@ -9,7 +9,6 @@ use App\Models\StudyProgram;
 use App\Models\SurveyAssignment;
 use App\Models\SurveyFormVersion;
 use App\Models\SurveyPeriod;
-use App\Models\SurveyTeam;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserIntegration;
@@ -32,7 +31,7 @@ class AdminController extends Controller
             $q->where(fn ($q) => $q->where('name', 'like', '%'.$r->q.'%')->orWhere('nim', 'like', '%'.$r->q.'%'));
         }
 
-        return view('students', ['students' => $q->paginate(25)->withQueryString(), 'users' => User::role('surveyor')->where('active', true)->get(), 'periods' => SurveyPeriod::all(), 'programs' => StudyProgram::all(), 'teams' => SurveyTeam::all()]);
+        return view('students', ['students' => $q->paginate(25)->withQueryString(), 'users' => User::role('surveyor')->where('active', true)->get(), 'periods' => SurveyPeriod::all(), 'programs' => StudyProgram::all()]);
     }
 
     public function studentEdit(Student $student): View
@@ -57,7 +56,7 @@ class AdminController extends Controller
 
     public function assign(Request $r): RedirectResponse
     {
-        $d = $r->validate(['students' => 'required|array|min:1|max:500', 'students.*' => 'required|integer|exists:students,id', 'user_id' => 'required|integer|exists:users,id', 'period_id' => 'required|integer|exists:survey_periods,id', 'team_id' => 'nullable|integer|exists:survey_teams,id', 'scheduled_at' => 'nullable|date|required_with:scheduled_until', 'scheduled_until' => 'nullable|date|after_or_equal:scheduled_at', 'assignment_reference' => 'nullable|string|max:255']);
+        $d = $r->validate(['students' => 'required|array|min:1|max:500', 'students.*' => 'required|integer|exists:students,id', 'user_id' => 'required|integer|exists:users,id', 'period_id' => 'required|integer|exists:survey_periods,id', 'scheduled_at' => 'nullable|date|required_with:scheduled_until', 'scheduled_until' => 'nullable|date|after_or_equal:scheduled_at', 'assignment_reference' => 'nullable|string|max:255']);
         $u = User::findOrFail($d['user_id']);
         abort_unless($u->active && $u->hasRole('surveyor'), 422, 'Surveyor harus aktif.');
         $p = SurveyPeriod::findOrFail($d['period_id']);
@@ -68,11 +67,8 @@ class AdminController extends Controller
             foreach ($d['students'] as $id) {
                 $a = SurveyAssignment::firstOrNew(['student_id' => $id, 'survey_period_id' => $d['period_id']]);
                 abort_if($a->exists && $a->survey, 422, 'Survey sudah dimulai; penugasan tidak boleh diganti.');
-                $a->fill(['user_id' => $u->id, 'survey_team_id' => $d['team_id'] ?? null, 'scheduled_at' => $d['scheduled_at'] ?? null, 'scheduled_until' => $d['scheduled_until'] ?? null, 'assignment_reference' => $d['assignment_reference'] ?? null, 'status' => ! empty($d['scheduled_at']) ? 'dijadwalkan' : 'belum_dijadwalkan', 'travel_link_id' => null]);
+                $a->fill(['user_id' => $u->id, 'scheduled_at' => $d['scheduled_at'] ?? null, 'scheduled_until' => $d['scheduled_until'] ?? null, 'assignment_reference' => $d['assignment_reference'] ?? null, 'status' => ! empty($d['scheduled_at']) ? 'dijadwalkan' : 'belum_dijadwalkan', 'travel_link_id' => null]);
                 $a->save();
-                if ($a->survey_team_id) {
-                    SurveyTeam::findOrFail($a->survey_team_id)->members()->syncWithoutDetaching([$u->id]);
-                }
                 Audit::record('assignment.saved', $a);
             }
             $u->notify(new SurveyNotice('Anda mendapat '.count($d['students']).' penugasan Survey GAKIN.', '/tasks'));
@@ -120,19 +116,16 @@ class AdminController extends Controller
 
     public function masters(): View
     {
-        return view('masters', ['periods' => SurveyPeriod::with('formVersion', 'rule')->get(), 'forms' => SurveyFormVersion::with('criteria')->get(), 'programs' => StudyProgram::all(), 'teams' => SurveyTeam::all(), 'settings' => SystemSetting::allValues()]);
+        return view('masters', ['periods' => SurveyPeriod::with('formVersion', 'rule')->get(), 'forms' => SurveyFormVersion::with('criteria')->get(), 'programs' => StudyProgram::all(), 'settings' => SystemSetting::allValues()]);
     }
 
     public function masterSave(Request $r): RedirectResponse
     {
-        $kind = $r->validate(['kind' => 'required|in:program,team,period,form,rule,settings'])['kind'];
+        $kind = $r->validate(['kind' => 'required|in:program,period,form,rule,settings'])['kind'];
         DB::transaction(function () use ($r, $kind) {
             switch ($kind) {
                 case 'program':$d = $r->validate(['name' => 'required|string|max:255|unique:study_programs,name']);
                     StudyProgram::create($d);
-                    break;
-                case 'team':$d = $r->validate(['name' => 'required|string|max:255|unique:survey_teams,name']);
-                    SurveyTeam::create($d);
                     break;
                 case 'period':$d = $r->validate(['name' => 'required|string|max:255', 'academic_year' => 'required|string|max:20', 'survey_form_version_id' => 'required|exists:survey_form_versions,id', 'starts_at' => 'required|date', 'ends_at' => 'required|date|after_or_equal:starts_at']);
                     abort_unless(SurveyFormVersion::find($d['survey_form_version_id'])->published, 422);

@@ -28,7 +28,44 @@ class MapAndDemoTest extends TestCase
 
         $response = $this->actingAs($assignment->user)->get('/map');
 
-        $response->assertOk()->assertSee('Buka Google Maps')->assertSee('query=Jalan%20Contoh%20%26%20Satu%20Manado', false)->assertSee('Belum ada GPS')->assertDontSee($other->student->name)->assertDontSee('<script>alert(1)</script>', false);
+        $response->assertOk()
+            ->assertSee('Cari alamat di OpenStreetMap')
+            ->assertSee('href="https://www.openstreetmap.org/search?query=Jalan%20Contoh%20%26%20Satu%20Manado"', false)
+            ->assertSee('Belum ada GPS')
+            ->assertSee('<script>alert(1)</script>')
+            ->assertDontSee($other->student->name)
+            ->assertDontSee('<script>alert(1)</script>', false)
+            ->assertDontSee('google.com/maps', false);
+    }
+
+    public function test_map_uses_registered_coordinates_when_visit_gps_is_missing(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        $assignment = SurveyAssignment::factory()->create();
+        $assignment->student->address()->update(['latitude' => 0, 'longitude' => 124.8337]);
+
+        $response = $this->actingAs($assignment->user)->get('/map');
+
+        $response->assertOk()
+            ->assertSee('Buka OpenStreetMap')
+            ->assertSee('https://www.openstreetmap.org/?mlat=0&mlon=124.8337#map=17/0/124.8337')
+            ->assertSee('Lihat titik')
+            ->assertDontSee('Cari alamat di OpenStreetMap');
+    }
+
+    public function test_map_does_not_offer_an_external_location_link_when_address_and_coordinates_are_missing(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        $assignment = SurveyAssignment::factory()->create();
+        $assignment->student->address()->update(['address' => '', 'city' => '', 'latitude' => null, 'longitude' => null]);
+
+        $response = $this->actingAs($assignment->user)->get('/map');
+
+        $response->assertOk()
+            ->assertSee('Lengkapi alamat terlebih dahulu.')
+            ->assertDontSee('href="https://www.openstreetmap.org/search?', false)
+            ->assertDontSee('href="https://www.openstreetmap.org/?mlat=', false)
+            ->assertDontSee('Lihat titik');
     }
 
     public function test_demo_can_be_seeded_twice_without_overwriting_practice_and_has_valid_printable_output(): void
@@ -52,7 +89,9 @@ class MapAndDemoTest extends TestCase
         $this->actingAs(User::where('nip', 'DEMO001')->firstOrFail());
         $this->get('/surveys/'.$draft->uuid)->assertOk()->assertSee('CONTOH LATIHAN')->assertSee('Data orang tua / wali');
         $this->get('/surveys/'.$finished->uuid.'/pdf')->assertOk()->assertHeader('content-type', 'application/pdf');
-        $this->get('/map')->assertOk()->assertSee('query=1.4635%2C124.8338', false);
+        $this->get('/map')->assertOk()
+            ->assertSee('https://www.openstreetmap.org/?mlat=1.4635&mlon=124.8338#map=17/1.4635/124.8338')
+            ->assertDontSee('https://www.openstreetmap.org/?mlat=1.4634&mlon=124.8337#map=17/1.4634/124.8337');
     }
 
     public function test_demo_refuses_to_seed_the_normal_local_database(): void

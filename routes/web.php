@@ -7,6 +7,7 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\PangiController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SurveyController;
+use App\Http\Controllers\SurveyorReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -37,6 +38,8 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/media/{photo}', [SurveyController::class, 'media']);
     Route::delete('/media/{photo}', [SurveyController::class, 'removePhoto']);
     Route::get('/surveys/{survey}/pdf', [ReportController::class, 'pdf']);
+    Route::get('/reports', [SurveyorReportController::class, 'index'])->middleware('can:reports.export')->name('reports.index');
+    Route::get('/reports/print', [SurveyorReportController::class, 'print'])->middleware('can:reports.export')->name('reports.print');
     Route::get('/reports/visits', [ReportController::class, 'visits'])->middleware('can:reports.export');
     Route::get('/reports/excel', [ReportController::class, 'excel'])->middleware('can:reports.export');
     Route::middleware('can:imports.manage')->group(function () {

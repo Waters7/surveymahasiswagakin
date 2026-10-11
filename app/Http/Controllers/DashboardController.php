@@ -21,12 +21,12 @@ class DashboardController extends Controller
         $done = $all->filter(fn ($a) => $a->survey?->locked_at)->count();
         $kpis = ['target' => $r->user()->can('surveys.view-all') ? Student::count() : $all->count(), 'assigned' => $all->count(), 'in_progress' => $all->filter(fn ($a) => $a->survey && ! $a->survey->locked_at)->count(), 'recommended' => $all->filter(fn ($a) => $a->survey?->recommendation === 'direkomendasikan' && $a->survey?->status === 'disetujui')->count(), 'not_recommended' => $all->filter(fn ($a) => $a->survey?->status === 'tidak_direkomendasikan' || ($a->survey?->recommendation === 'tidak_direkomendasikan' && $a->survey?->status === 'disetujui'))->count(), 'done' => $done, 'pending' => $all->where('status', 'menunggu_verifikasi')->count(), 'revision' => $all->where('status', 'perlu_revisi')->count(), 'today' => $all->filter(fn ($a) => $a->isScheduledOn(today()))->count(), 'surveyors' => $r->user()->can('surveys.view-all') ? User::role('surveyor')->count() : 1];
         $programs = $all->groupBy(fn ($a) => $a->student->program->name);
-        $teams = $all->groupBy('user_id');
+        $surveyors = $all->groupBy('user_id');
         $cities = $all->groupBy(fn ($a) => $a->student->address?->city ?? 'Belum diisi');
         $recent = (clone $q)->latest('updated_at')->limit(6)->get();
         $imports = $r->user()->can('imports.manage') ? ImportBatch::where('status', 'preview')->get() : collect();
 
-        return view('dashboard', compact('kpis', 'programs', 'teams', 'cities', 'recent', 'imports'));
+        return view('dashboard', compact('kpis', 'programs', 'surveyors', 'cities', 'recent', 'imports'));
     }
 
     public function tasks(Request $r): View

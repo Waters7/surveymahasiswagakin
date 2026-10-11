@@ -6,7 +6,6 @@ use App\Models\ImportBatch;
 use App\Models\Student;
 use App\Models\StudyProgram;
 use App\Models\SurveyAssignment;
-use App\Models\SurveyTeam;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -88,16 +87,16 @@ class ImportService
         return $errors;
     }
 
-    public function confirm(ImportBatch $batch, array $teamMap = [], ?int $periodId = null): int
+    public function confirm(ImportBatch $batch, array $surveyorMap = [], ?int $periodId = null): int
     {
-        return DB::transaction(function () use ($batch, $teamMap, $periodId) {
+        return DB::transaction(function () use ($batch, $surveyorMap, $periodId) {
             $b = ImportBatch::lockForUpdate()->findOrFail($batch->id);
             abort_unless($b->status === 'preview', 409, 'Batch sudah diproses.');
             $errors = $this->errors($b->rows, $b->type);
             if ($errors) {
                 throw ValidationException::withMessages(['import' => 'Terdapat '.count($errors).' baris bermasalah. Perbaiki file, lalu unggah ulang.']);
             }
-            foreach ($teamMap as $id) {
+            foreach ($surveyorMap as $id) {
                 if ($id) {
                     abort_unless(User::role('surveyor')->where('active', true)->whereKey($id)->exists(), 422, 'Pemetaan harus ke akun surveyor aktif.');
                 }
@@ -119,11 +118,9 @@ class ImportService
                 foreach (['father' => 'ayah', 'mother' => 'ibu'] as $prefix => $relation) {
                     $s->parents()->create(['relation' => $relation, 'occupation' => $r[$prefix.'_job'] ?? null, 'education' => $r[$prefix.'_education'] ?? null, 'phone' => $r[$prefix.'_phone'] ?? null]);
                 }
-                if ($uid = $teamMap[$r['team'] ?? ''] ?? null) {
+                if ($uid = $surveyorMap[$r['team'] ?? ''] ?? null) {
                     abort_unless($periodId, 422, 'Periode wajib dipilih untuk penugasan.');
-                    $team = SurveyTeam::firstOrCreate(['name' => $r['team']]);
-                    $team->members()->syncWithoutDetaching([$uid]);
-                    SurveyAssignment::create(['student_id' => $s->id, 'user_id' => $uid, 'survey_period_id' => $periodId, 'survey_team_id' => $team->id]);
+                    SurveyAssignment::create(['student_id' => $s->id, 'user_id' => $uid, 'survey_period_id' => $periodId]);
                 }
             }
             $b->update(['status' => 'imported']);

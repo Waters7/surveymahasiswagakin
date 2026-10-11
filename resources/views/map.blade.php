@@ -1,27 +1,30 @@
 @extends('layouts.app')
 @section('title','Peta sebaran')
 @section('content')
-<div class="page-heading"><div><h1>Peta sebaran survey</h1><p>Buka alamat tujuan atau titik GPS kunjungan di Google Maps.</p></div><a class="btn" href="/tasks">Lihat tugas</a></div>
+<div class="page-heading"><div><h1>Peta sebaran survey</h1><p>Lihat lokasi penugasan dan kunjungan melalui OpenStreetMap.</p></div><a class="btn" href="/tasks">Lihat tugas</a></div>
 <div class="hint">Hijau: GPS kunjungan. Biru: koordinat alamat terdaftar. Alamat tanpa koordinat tersedia pada daftar di bawah; hasil pencarian alamat perlu dikonfirmasi dengan mahasiswa.</div>
-<div class="card card-body">
-    <label class="check-line"><input type="checkbox" id="show-routes">Tampilkan urutan kunjungan per surveyor</label>
-    <p id="map-error" class="alert warning" role="status" hidden>Peta dasar tidak dapat dimuat. Gunakan tombol Google Maps pada daftar lokasi di bawah.</p>
+<div class="card card-body map-panel">
+    <div class="map-toolbar"><button class="btn" type="button" id="map-fit">Tampilkan semua titik</button><a class="text-link" href="#map-locations">Daftar lokasi</a><span class="muted">Leaflet + OpenStreetMap</span></div>
+    <label class="check-line"><input type="checkbox" id="show-routes">Hubungkan urutan kunjungan (bukan rute jalan)</label>
+    <div id="map-error" class="alert warning" role="status" hidden><span>Peta belum dapat dimuat lengkap. Periksa koneksi atau buka lokasi melalui OpenStreetMap di daftar bawah.</span><button class="btn" type="button" id="map-retry">Coba lagi</button></div>
     <div id="survey-map" class="map-canvas" aria-label="Sebaran koordinat survey"></div>
-    <p id="map-summary" class="muted"></p>
-    <noscript>Aktifkan JavaScript untuk melihat sebaran. Tombol Google Maps di bawah tetap dapat digunakan.</noscript>
+    <p id="map-summary" class="muted" aria-live="polite">Memuat lokasi…</p>
+    <noscript>Aktifkan JavaScript untuk melihat sebaran. Tautan OpenStreetMap di bawah tetap dapat digunakan.</noscript>
 </div>
-<h2 style="margin:24px 0 16px">Daftar lokasi · {{count($data)}} target</h2>
+<h2 id="map-locations" style="margin:24px 0 16px">Daftar lokasi · {{count($data)}} target</h2>
 <div class="task-grid">
 @forelse($data as $item)
     @php
         $location = collect([$item['actual'], $item['registered']])->first(fn ($point) => isset($point['latitude'], $point['longitude']));
-        $query = $location ? $location['latitude'].','.$location['longitude'] : trim(($item['address'] ?? '').' '.($item['city'] ?? ''));
+        $query = trim(($item['address'] ?? '').' '.($item['city'] ?? ''));
+        $mapUrl = $location ? 'https://www.openstreetmap.org/?mlat='.$location['latitude'].'&mlon='.$location['longitude'].'#map=17/'.$location['latitude'].'/'.$location['longitude'] : 'https://www.openstreetmap.org/search?query='.rawurlencode($query);
     @endphp
-    <article class="card task-card">
+    <article class="card task-card map-location-card">
         <h3>{{$item['name']}}</h3><p>{{$item['address'] ?: 'Alamat belum diisi'}}</p><p class="muted">{{$item['city']}} · {{$item['surveyor']}}</p>
         <p class="hint">{{$location ? 'Titik koordinat tersedia' : 'Belum ada GPS · cari berdasarkan alamat'}}</p>
         <div class="task-actions">
-            @if($query !== '')<a class="btn primary" href="https://www.google.com/maps/search/?api=1&amp;query={{rawurlencode($query)}}" target="_blank" rel="noopener noreferrer">Buka Google Maps</a>@else<span class="muted">Lengkapi alamat terlebih dahulu.</span>@endif
+            @if($location)<button class="btn primary" type="button" data-map-focus="{{$loop->index}}" hidden>Lihat titik</button>@endif
+            @if($location || $query !== '')<a class="btn" href="{{$mapUrl}}" target="_blank" rel="noopener noreferrer">{{$location ? 'Buka OpenStreetMap' : 'Cari alamat di OpenStreetMap'}}</a>@else<span class="muted">Lengkapi alamat terlebih dahulu.</span>@endif
             <a class="btn" href="{{$item['url']}}">Detail</a>
         </div>
     </article>
