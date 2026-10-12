@@ -58,11 +58,13 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
     Route::post('/assignments', [AdminController::class, 'assign'])->middleware('can:assignments.manage');
     Route::middleware('can:users.manage')->group(function () {
-        Route::get('/users', [AdminController::class, 'users']);
+        Route::get('/users', [AdminController::class, 'users'])->name('users.index');
+        Route::get('/users/create', [AdminController::class, 'userForm'])->name('users.create');
+        Route::get('/users/{user}/edit', [AdminController::class, 'userForm'])->name('users.edit');
         Route::get('/roles', [AdminController::class, 'roles']);
         Route::post('/roles', [AdminController::class, 'roleSave']);
-        Route::post('/users', [AdminController::class, 'userSave']);
-        Route::post('/users/{user}', [AdminController::class, 'userSave']);
+        Route::post('/users', [AdminController::class, 'userSave'])->name('users.store');
+        Route::post('/users/{user}', [AdminController::class, 'userSave'])->name('users.update');
     });
     Route::get('/masters', [AdminController::class, 'masters'])->middleware('can:masters.manage');
     Route::post('/masters', [AdminController::class, 'masterSave'])->middleware('can:masters.manage');

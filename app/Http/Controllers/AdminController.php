@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -79,22 +80,43 @@ class AdminController extends Controller
 
     public function users(Request $r): View
     {
-        $q = User::with('roles', 'integration');
-        if ($r->q) {
-            $q->where(fn ($q) => $q->where('name', 'like', '%'.$r->q.'%')->orWhere('nip', 'like', '%'.$r->q.'%'));
+        $filters = $r->validate(['q' => 'nullable|string|max:100', 'role' => 'nullable|string|exists:roles,name', 'status' => 'nullable|in:aktif,nonaktif,ganti-password,email']);
+        $q = User::with('roles', 'integration')->select('users.*')
+            ->addSelect(['last_login_at' => AuditLog::select('created_at')->whereColumn('user_id', 'users.id')->where('action', 'auth.login')->latest()->limit(1)])
+            ->withCasts(['last_login_at' => 'datetime']);
+        if ($search = $filters['q'] ?? null) {
+            $q->where(fn ($q) => $q->where('name', 'like', '%'.$search.'%')->orWhere('nip', 'like', '%'.$search.'%')->orWhere('email', 'like', '%'.$search.'%'));
         }
+        if ($role = $filters['role'] ?? null) {
+            $q->role($role);
+        }
+        match ($filters['status'] ?? null) {
+            'aktif' => $q->where('active', true),
+            'nonaktif' => $q->where('active', false),
+            'ganti-password' => $q->where('active', true)->where('must_change_password', true),
+            'email' => $q->where('email', 'like', '%@pending.invalid'),
+            default => null,
+        };
+        $summary = User::query()->selectRaw('count(*) as total, coalesce(sum(case when active then 1 else 0 end), 0) as aktif, coalesce(sum(case when active and must_change_password then 1 else 0 end), 0) as ganti_password, coalesce(sum(case when email like ? then 1 else 0 end), 0) as email', ['%@pending.invalid'])->toBase()->first();
 
-        return view('users', ['users' => $q->paginate(20)->withQueryString(), 'roles' => Role::pluck('name')]);
+        return view('users', ['users' => $q->orderByDesc('active')->orderBy('name')->paginate(25)->withQueryString(), 'roles' => Role::orderBy('name')->pluck('name'), 'filters' => $filters, 'summary' => $summary]);
+    }
+
+    public function userForm(?User $user = null): View
+    {
+        $user?->load('roles', 'integration');
+
+        return view('users-form', ['user' => $user, 'roles' => Role::orderBy('name')->pluck('name'), 'lastLoginAt' => $user ? AuditLog::where('user_id', $user->id)->where('action', 'auth.login')->latest()->value('created_at') : null]);
     }
 
     public function userSave(Request $r, ?User $user = null): RedirectResponse
     {
-        $d = $r->validate(['name' => 'required|string|max:255', 'email' => ['required', 'email', Rule::unique('users')->ignore($user?->id)], 'nip' => ['nullable', 'regex:/^\d{18}$/', Rule::unique('users')->ignore($user?->id)], 'phone' => 'nullable|string|max:30', 'unit' => 'nullable|string|max:255', 'position' => 'nullable|string|max:255', 'role' => 'required|exists:roles,name', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128', 'external_user_id' => 'nullable|uuid']);
-        if (! $user || (! $user->active && $d['active'])) {
-            abort_unless(! empty($d['password']), 422, 'Password awal wajib diisi.');
+        $d = $r->validate(['name' => 'required|string|max:255', 'email' => ['required', 'email', Rule::unique('users')->ignore($user?->id)], 'nip' => ['nullable', 'regex:/^\d{18}$/', Rule::unique('users')->ignore($user?->id)], 'phone' => 'nullable|string|max:30', 'unit' => 'nullable|string|max:255', 'position' => 'nullable|string|max:255', 'role' => 'required|exists:roles,name', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128', 'external_user_id' => 'nullable|uuid'], ['nip.regex' => 'NIP harus 18 digit angka.']);
+        if ((! $user || (! $user->active && $d['active'])) && empty($d['password'])) {
+            throw ValidationException::withMessages(['password' => $user ? 'Password awal wajib diisi untuk mengaktifkan akun.' : 'Password awal wajib diisi untuk pengguna baru.']);
         }
-        if ($user?->id === auth()->id()) {
-            abort_unless($d['active'] && $d['role'] === 'super-admin', 422, 'Akun admin sendiri tidak boleh dinonaktifkan atau diturunkan.');
+        if ($user?->id === auth()->id() && (! $d['active'] || $d['role'] !== 'super-admin')) {
+            throw ValidationException::withMessages(['role' => 'Akun admin Anda sendiri tidak boleh dinonaktifkan atau diturunkan perannya.']);
         }
         DB::transaction(function () use ($d, $user) {
             $u = $user ?? new User;
@@ -111,7 +133,7 @@ class AdminController extends Controller
             Audit::record('user.saved', $u, [], ['role' => $d['role'], 'active' => (bool) $d['active']]);
         });
 
-        return back()->with('status', 'Pengguna disimpan. Password baru wajib diganti saat login.');
+        return redirect()->route('users.index')->with('status', 'Pengguna '.$d['name'].' disimpan.'.(empty($d['password']) ? '' : ' Password baru wajib diganti saat login berikutnya.'));
     }
 
     public function masters(): View
