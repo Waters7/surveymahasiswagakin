@@ -59,13 +59,30 @@ function Copy-ReleaseTree {
     }
 }
 
+function Invoke-Logged {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][string]$LogPath
+    )
+
+    # Windows PowerShell 5.1 memperlakukan stderr program native sebagai galat ketika ErrorActionPreference=Stop.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $FilePath @Arguments 2>&1 | ForEach-Object { "$_" } | Set-Content -LiteralPath $LogPath -Encoding UTF8
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
 $previousPath = $env:Path
 Push-Location $projectRoot
 try {
     $env:Path = (Split-Path -Parent $NpmPath) + [IO.Path]::PathSeparator + $previousPath
     Write-Output 'Membangun aset frontend...'
-    & $NpmPath run build *> (Join-Path $buildRoot 'npm-build.log')
-    if ($LASTEXITCODE -ne 0) { throw "Build frontend gagal. Lihat $buildRoot/npm-build.log" }
+    if ((Invoke-Logged -FilePath $NpmPath -Arguments @('run', 'build') -LogPath (Join-Path $buildRoot 'npm-build.log')) -ne 0) { throw "Build frontend gagal. Lihat $buildRoot/npm-build.log" }
 } finally {
     $env:Path = $previousPath
     Pop-Location
@@ -113,10 +130,8 @@ try {
         [Environment]::SetEnvironmentVariable($name, $buildVariables[$name], 'Process')
     }
     Write-Output 'Memasang vendor produksi dari composer.lock pada staging terpisah...'
-    & $PhpPath $ComposerPath install --no-dev --prefer-dist --optimize-autoloader --no-scripts --no-interaction --no-progress *> (Join-Path $buildRoot 'composer-install.log')
-    if ($LASTEXITCODE -ne 0) { throw "Composer gagal. Lihat $buildRoot/composer-install.log" }
-    & $PhpPath artisan package:discover --no-interaction *> (Join-Path $buildRoot 'package-discover.log')
-    if ($LASTEXITCODE -ne 0) { throw "Package discovery gagal. Lihat $buildRoot/package-discover.log" }
+    if ((Invoke-Logged -FilePath $PhpPath -Arguments @($ComposerPath, 'install', '--no-dev', '--prefer-dist', '--optimize-autoloader', '--no-scripts', '--no-interaction', '--no-progress') -LogPath (Join-Path $buildRoot 'composer-install.log')) -ne 0) { throw "Composer gagal. Lihat $buildRoot/composer-install.log" }
+    if ((Invoke-Logged -FilePath $PhpPath -Arguments @('artisan', 'package:discover', '--no-interaction') -LogPath (Join-Path $buildRoot 'package-discover.log')) -ne 0) { throw "Package discovery gagal. Lihat $buildRoot/package-discover.log" }
     if ((Get-FileHash -LiteralPath 'composer.lock' -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot 'composer.lock') -Algorithm SHA256).Hash) {
         throw 'composer.lock staging berubah; paket tidak dibuat.'
     }
@@ -135,7 +150,7 @@ if (Test-Path -LiteralPath (Join-Path $packageRoot '.env')) { throw 'Paket tidak
 if (-not (Test-Path -LiteralPath (Join-Path $packageRoot 'vendor/autoload.php'))) { throw 'Vendor produksi tidak lengkap.' }
 if (-not (Test-Path -LiteralPath (Join-Path $packageRoot 'public/build/manifest.json'))) { throw 'Manifest frontend tidak tersedia.' }
 
-Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::Open($archivePath, [IO.Compression.ZipArchiveMode]::Create)
 try {
     foreach ($directory in $writableDirectories) {
