@@ -8,6 +8,7 @@ use App\Models\StudentAddress;
 use App\Models\StudyProgram;
 use App\Models\SurveyPeriod;
 use App\Models\User;
+use App\Services\AddressGeocoder;
 use App\Services\AssignmentQuery;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -38,7 +39,7 @@ class DashboardController extends Controller
 
     public function map(Request $r): View
     {
-        $data = AssignmentQuery::filtered($r->user(), $r->all())->get()->map(fn ($a) => ['name' => $a->student->name, 'program' => $a->student->program->name, 'status' => $a->status, 'surveyor' => $a->user->name, 'address' => $a->student->address?->address, 'city' => $a->student->address?->city, 'registered' => $a->student->address?->only(['latitude', 'longitude']), 'actual' => $a->survey?->location?->only(['latitude', 'longitude']), 'started_at' => $a->survey?->started_at?->toIso8601String(), 'url' => $a->survey ? '/surveys/'.$a->survey->uuid : '/tasks']);
+        $data = AssignmentQuery::filtered($r->user(), $r->all())->get()->map(fn ($a) => ['name' => $a->student->name, 'program' => $a->student->program->name, 'status' => $a->status, 'surveyor' => $a->user->name, 'address' => $a->student->address?->address, 'city' => $a->student->address?->city, 'registered' => $a->student->address?->only(['latitude', 'longitude']), 'actual' => $a->survey?->location?->only(['latitude', 'longitude']), 'approximate' => $a->student->address?->approx_latitude === null ? null : ['latitude' => $a->student->address->approx_latitude, 'longitude' => $a->student->address->approx_longitude, 'precision' => AddressGeocoder::PRECISION_LABELS[$a->student->address->approx_precision] ?? 'wilayah', 'label' => $a->student->address->approx_label], 'started_at' => $a->survey?->started_at?->toIso8601String(), 'url' => $a->survey ? '/surveys/'.$a->survey->uuid : '/tasks']);
 
         return view('map', compact('data'));
     }

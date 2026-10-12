@@ -14,6 +14,11 @@ return [
     |
     */
 
+    'nominatim' => [
+        'url' => env('NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),
+        'user_agent' => env('NOMINATIM_USER_AGENT', 'SurveyGAKIN/1.0 (+'.env('APP_URL', 'http://localhost').')'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

@@ -1,15 +1,45 @@
 <?php
 
+use App\Models\StudentAddress;
 use App\Models\SurveyAssignment;
 use App\Models\TravelLink;
 use App\Models\User;
 use App\Notifications\SurveyNotice;
+use App\Services\AddressGeocoder;
 use App\Services\DeliverySchedule;
 use App\Services\DeploymentReadiness;
 use App\Services\ImportService;
 use App\Services\TravelReportBuilder;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('gakin:geocode-addresses {--limit=100 : Jumlah alamat maksimal per proses} {--retry : Ulangi alamat yang sebelumnya tidak ditemukan}', function (AddressGeocoder $geocoder): int {
+    $addresses = StudentAddress::query()->whereNull('latitude')
+        ->when($this->option('retry'), fn ($query) => $query->whereNull('approx_latitude'), fn ($query) => $query->whereNull('geocoded_at'))
+        ->orderBy('id')->limit(max(1, (int) $this->option('limit')))->get();
+    if ($addresses->isEmpty()) {
+        $this->info('Tidak ada alamat baru yang perlu dicari.');
+
+        return 0;
+    }
+    $found = 0;
+    try {
+        $this->withProgressBar($addresses, function (StudentAddress $address) use ($geocoder, &$found): void {
+            $found += $geocoder->locate($address) ? 1 : 0;
+        });
+    } catch (RuntimeException|ConnectionException $exception) {
+        $this->newLine();
+        $this->error($exception->getMessage().' Alamat yang belum diproses akan dicoba pada proses berikutnya.');
+
+        return 1;
+    }
+    $this->newLine();
+    $this->info("{$found} dari {$addresses->count()} alamat mendapat titik perkiraan. Titik perkiraan perlu dikonfirmasi dengan mahasiswa.");
+
+    return 0;
+})->purpose('Cari titik perkiraan alamat mahasiswa melalui OpenStreetMap Nominatim (hanya nama wilayah yang dikirim)');
+Schedule::command('gakin:geocode-addresses --limit=30')->dailyAt('02:30')->timezone('Asia/Makassar')->withoutOverlapping();
 
 Artisan::command('gakin:deployment-check {--skip-database : Periksa konfigurasi sebelum migrasi}', function (DeploymentReadiness $readiness): int {
     $checks = $readiness->inspect((bool) $this->option('skip-database'));

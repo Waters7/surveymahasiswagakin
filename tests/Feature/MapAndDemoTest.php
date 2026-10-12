@@ -53,6 +53,21 @@ class MapAndDemoTest extends TestCase
             ->assertDontSee('Cari alamat di OpenStreetMap');
     }
 
+    public function test_map_offers_labelled_approximate_point_when_only_address_estimate_exists(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        $assignment = SurveyAssignment::factory()->create();
+        $assignment->student->address->forceFill(['approx_latitude' => 1.2151679, 'approx_longitude' => 124.7978881, 'approx_precision' => 'kabupaten', 'approx_label' => 'Minahasa, Sulawesi Utara, Indonesia', 'geocoded_at' => now()])->save();
+
+        $response = $this->actingAs($assignment->user)->get('/map');
+
+        $response->assertOk()
+            ->assertSee('Titik perkiraan tingkat kabupaten/kota: Minahasa, Sulawesi Utara, Indonesia')
+            ->assertSee('Lihat titik perkiraan')
+            ->assertSee('Cari alamat di OpenStreetMap')
+            ->assertDontSee('Buka OpenStreetMap');
+    }
+
     public function test_map_does_not_offer_an_external_location_link_when_address_and_coordinates_are_missing(): void
     {
         $this->seed(DatabaseSeeder::class);

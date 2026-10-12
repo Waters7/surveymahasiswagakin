@@ -14,8 +14,10 @@ export function initMap() {
     const targets = JSON.parse(document.getElementById('map-data').textContent);
     const map = L.map(element, {scrollWheelZoom: false}).setView([1.3, 124.85], 8);
     const error = document.getElementById('map-error');
+    // OSM memblokir tile tanpa Referer, sedangkan halaman memakai Referrer-Policy same-origin: kirim origin saja.
     const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
+        referrerPolicy: 'strict-origin',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
     });
     tiles.on('tileerror', () => { error.hidden = false; });
@@ -25,7 +27,10 @@ export function initMap() {
     const focusMarkers = new Map();
     const visitsBySurveyor = new Map();
     const routes = L.layerGroup();
+    const approximateGroups = new Map();
+    const approximateMarkers = new Set();
     let locatedTargets = 0;
+    let approximateTargets = 0;
 
     targets.forEach((target, index) => {
         let found = false;
@@ -51,6 +56,14 @@ export function initMap() {
             focusMarkers.set(String(index), marker);
         }
         if (found) locatedTargets++;
+        const estimate = found ? null : coordinates(target.approximate);
+        if (estimate) {
+            const key = estimate.join(',');
+            const group = approximateGroups.get(key) || {point: estimate, precision: target.approximate.precision, label: target.approximate.label, items: []};
+            group.items.push({target, index});
+            approximateGroups.set(key, group);
+            approximateTargets++;
+        }
         const actual = coordinates(target.actual);
         if (actual) {
             const visits = visitsBySurveyor.get(target.surveyor) || [];
@@ -58,6 +71,37 @@ export function initMap() {
             visitsBySurveyor.set(target.surveyor, visits);
         }
     });
+    for (const group of approximateGroups.values()) {
+        points.push(group.point);
+        const popup = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = `${group.items.length} target · perkiraan tingkat ${group.precision}`;
+        const place = document.createElement('p');
+        place.textContent = group.label || '';
+        const note = document.createElement('p');
+        note.textContent = 'Titik dari nama wilayah pada alamat, bukan lokasi rumah. Konfirmasi dengan mahasiswa.';
+        const list = document.createElement('ul');
+        list.className = 'map-approx-list';
+        for (const {target} of group.items.slice(0, 15)) {
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = target.url;
+            link.textContent = target.name;
+            item.append(link, ` · ${target.surveyor}`);
+            list.append(item);
+        }
+        popup.append(title, place, note, list);
+        if (group.items.length > 15) {
+            const more = document.createElement('p');
+            more.textContent = `dan ${group.items.length - 15} target lainnya pada daftar di bawah.`;
+            popup.append(more);
+        }
+        const size = Math.min(44, 24 + group.items.length * 2);
+        const icon = L.divIcon({className: 'map-approx-marker', html: `<span>${group.items.length}</span>`, iconSize: [size, size]});
+        const marker = L.marker(group.point, {icon, title: `${group.items.length} target, perkiraan tingkat ${group.precision}`}).addTo(map).bindPopup(popup);
+        approximateMarkers.add(marker);
+        for (const {index} of group.items) focusMarkers.set(String(index), marker);
+    }
     for (const visits of visitsBySurveyor.values()) {
         if (visits.length < 2) continue;
         visits.sort((first, second) => first.startedAt.localeCompare(second.startedAt));
@@ -83,14 +127,17 @@ export function initMap() {
         button.hidden = false;
         button.addEventListener('click', () => {
             element.scrollIntoView({behavior: 'smooth', block: 'center'});
-            map.setView(marker.getLatLng(), 16);
+            map.setView(marker.getLatLng(), approximateMarkers.has(marker) ? 12 : 16);
             marker.openPopup();
             element.focus({preventScroll: true});
         });
     }
     fitPoints();
-    document.getElementById('map-summary').textContent = locatedTargets
-        ? `${locatedTargets} dari ${targets.length} target memiliki koordinat. ${targets.length - locatedTargets} belum memiliki titik lokasi.`
-        : targets.length ? `Belum ada koordinat untuk ${targets.length} target. Cari alamat melalui daftar di bawah; titik akan tampil setelah GPS diisi.` : 'Belum ada penugasan untuk ditampilkan.';
+    const withoutPoint = targets.length - locatedTargets - approximateTargets;
+    document.getElementById('map-summary').textContent = !targets.length
+        ? 'Belum ada penugasan untuk ditampilkan.'
+        : locatedTargets || approximateTargets
+            ? `${locatedTargets} dari ${targets.length} target memiliki koordinat${approximateTargets ? `, ${approximateTargets} memakai titik perkiraan dari alamat` : ''}. ${withoutPoint} belum memiliki titik lokasi.`
+            : `Belum ada koordinat untuk ${targets.length} target. Cari alamat melalui daftar di bawah; titik akan tampil setelah GPS diisi.`;
     new ResizeObserver(() => map.invalidateSize()).observe(element);
 }
