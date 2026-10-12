@@ -87,4 +87,18 @@ class LoginExperienceTest extends TestCase
             'unknown account' => ['198001012010011002', 'LoginExample123', true],
         ];
     }
+
+    public function test_user_menu_offers_logout_and_logout_ends_the_session(): void
+    {
+        $user = User::factory()->create(['name' => 'Rina Surveyor', 'active' => true, 'must_change_password' => false]);
+
+        $this->actingAs($user)->get('/profile')->assertOk()
+            ->assertSee('aria-label="Menu akun Rina Surveyor"', false)
+            ->assertSee('<form method="post" action="'.route('logout').'" data-logout-form>', false)
+            ->assertSee('Keluar');
+
+        $this->post(route('logout'))->assertRedirect('/login');
+        $this->assertGuest();
+        $this->assertDatabaseHas('audit_logs', ['action' => 'auth.logout', 'user_id' => $user->id]);
+    }
 }
