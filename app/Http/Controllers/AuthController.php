@@ -15,7 +15,7 @@ class AuthController extends Controller
         $data = $r->validate(['login' => 'required|string', 'password' => 'required|string']);
         $field = filter_var($data['login'], FILTER_VALIDATE_EMAIL) ? 'email' : 'nip';
         if (! Auth::attempt([$field => $data['login'], 'password' => $data['password'], 'active' => true])) {
-            return back()->withErrors(['login' => 'Identitas atau password tidak sesuai, atau akun belum aktif.'])->onlyInput('login');
+            return back()->withErrors(['login' => 'Belum berhasil masuk. Periksa kembali email/NIP dan password Anda. Jika masih gagal, hubungi koordinator GAKIN.'])->onlyInput('login');
         }
         $r->session()->regenerate();
         Audit::record('auth.login', $r->user());
