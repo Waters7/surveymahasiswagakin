@@ -5,10 +5,19 @@ use App\Models\TravelLink;
 use App\Models\User;
 use App\Notifications\SurveyNotice;
 use App\Services\DeliverySchedule;
+use App\Services\DeploymentReadiness;
 use App\Services\ImportService;
 use App\Services\TravelReportBuilder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('gakin:deployment-check {--skip-database : Periksa konfigurasi sebelum migrasi}', function (DeploymentReadiness $readiness): int {
+    $checks = $readiness->inspect((bool) $this->option('skip-database'));
+    $this->table(['Pemeriksaan', 'Hasil'], collect($checks)->map(fn (bool $passed, string $label): array => [$label, $passed ? 'OK' : 'PERIKSA'])->values()->all());
+    $this->line('Periksa juga document root domain ke folder public, SSL, dan cron melalui cPanel. Pemeriksaan ini tidak mengubah data.');
+
+    return in_array(false, $checks, true) ? 1 : 0;
+})->purpose('Periksa kesiapan konfigurasi deployment cPanel tanpa menampilkan rahasia');
 
 Artisan::command('gakin:preview-reference {students} {users} {--admin=}', function () {
     $u = User::where('email', $this->option('admin') ?: env('ADMIN_EMAIL'))->firstOrFail();
