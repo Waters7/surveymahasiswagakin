@@ -1,0 +1,1 @@
+<meta name="theme-color" content="#087f65"><link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/brand/gakin-mark.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/brand/apple-touch-icon.png"><link rel="manifest" href="/manifest.webmanifest">

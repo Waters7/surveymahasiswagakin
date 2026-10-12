@@ -4,12 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Masuk · {{ config('app.demo_mode') ? 'Ruang latihan' : 'Aplikasi utama' }} · Survey GAKIN</title>
+    <x-brand-head/>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body>
 <div class="login-shell">
     <section class="login-intro">
-        <div class="eyebrow" style="color:#b4d7c8">POLTEKKES KEMENKES MANADO</div>
+        <img class="login-logo" src="/brand/gakin-logo-putih.svg" alt="Survey GAKIN Poltekkes Kemenkes Manado" width="394" height="120">
         <h1>Satu kunjungan.<br>Data yang berarti.</h1>
         <p>Ruang kerja bersama untuk pelaksanaan, dokumentasi, dan verifikasi Survey Keluarga Miskin.</p>
         <div style="margin-top:50px;display:flex;gap:12px;align-items:center;color:#b4d7c8"><x-icon name="shield-check"/>Data terlindungi. Proses dapat ditelusuri.</div>
@@ -17,8 +18,8 @@
     <section class="login-form">
         <div>
             <div class="brand" style="padding:0;margin-bottom:30px">
-                <span class="brand-mark"><x-icon name="clipboard-check"/></span>
-                <span>GAKIN<span class="brand-sub">POLTEKKES MANADO</span></span>
+                <img class="brand-mark" src="/brand/gakin-mark.svg" alt="" width="44" height="44">
+                <span class="brand-text"><span class="brand-eyebrow">SURVEY</span>GAKIN<span class="brand-sub">POLTEKKES MANADO</span></span>
             </div>
             <span class="badge {{ config('app.demo_mode') ? 'warning' : 'success' }} login-workspace">{{ config('app.demo_mode') ? 'Ruang latihan · Data contoh' : 'Aplikasi utama · Survey GAKIN' }}</span>
             <h2>{{ config('app.demo_mode') ? 'Ruang latihan survey' : 'Selamat datang kembali' }}</h2>
