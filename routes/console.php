@@ -28,9 +28,21 @@ Artisan::command('gakin:preview-reference {students} {users} {--admin=}', functi
         $this->info($type.': '.count($batch->rows).' rows, '.count($batch->errors).' errors. /imports/'.$batch->uuid);
     }
 });
-Artisan::command('gakin:remind', function () {
-    foreach (SurveyAssignment::with('user', 'student')->whereDate('scheduled_at', today()->addDay())->get() as $a) {
-        $a->user->notify(new SurveyNotice('Survey '.$a->student->name.' dijadwalkan besok.', '/tasks'));
+Artisan::command('gakin:remind', function (): void {
+    $tomorrow = today()->addDay()->toDateString();
+    $assignments = SurveyAssignment::with('user', 'student')
+        ->whereHas('user', fn ($user) => $user->where('active', true))
+        ->whereDoesntHave('survey', fn ($survey) => $survey->whereNotNull('locked_at'))
+        ->where(fn ($schedule) => $schedule->whereDate('scheduled_at', $tomorrow)->orWhereDate('scheduled_until', $tomorrow))
+        ->get();
+    foreach ($assignments as $a) {
+        $isRange = $a->scheduled_until && ! $a->scheduled_until->isSameDay($a->scheduled_at);
+        $message = match (true) {
+            $a->scheduled_at->toDateString() !== $tomorrow => 'Jadwal survey '.$a->student->name.' berakhir besok ('.$a->scheduleLabel().'). Selesaikan dan kirim hasilnya.',
+            $isRange => 'Survey '.$a->student->name.' dijadwalkan mulai besok ('.$a->scheduleLabel().').',
+            default => 'Survey '.$a->student->name.' dijadwalkan besok.',
+        };
+        $a->user->notify(new SurveyNotice($message, '/tasks'));
     }
 });
 Artisan::command('gakin:prepare-reports', function () {
