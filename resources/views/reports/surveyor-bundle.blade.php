@@ -8,7 +8,7 @@
 <div class="bundle-cover">
     <h1>LAPORAN HASIL SURVEY GAKIN</h1>
     <p style="text-align:center">POLTEKKES KEMENKES MANADO</p>
-    <p>Periode: <strong>{{$period?->name ?? 'Semua periode'}}</strong><br>Dicetak: {{$printedAt->format('d-m-Y H:i')}} WITA<br>Jumlah hasil survey: <strong>{{$documents->count()}}</strong></p>
+    <p>Periode: <strong>{{$period?->name ?? 'Semua periode'}}</strong><br>Tanggal kunjungan / mulai survey (WITA): <strong>{{isset($filters['date_from']) ? \Carbon\CarbonImmutable::parse($filters['date_from'])->format('d-m-Y') : 'Sejak awal'}} sampai {{isset($filters['date_to']) ? \Carbon\CarbonImmutable::parse($filters['date_to'])->format('d-m-Y') : 'Semua tanggal'}}</strong><br>Dicetak: {{$printedAt->format('d-m-Y H:i')}} WITA<br>Jumlah hasil survey: <strong>{{$documents->count()}}</strong></p>
     <table><thead><tr><th>Surveyor</th><th>Jumlah hasil terkirim</th></tr></thead><tbody>
         @foreach($documents->groupBy('survey.user_id') as $group)<tr><td>{{$group->first()['survey']->user->name}}</td><td>{{$group->count()}}</td></tr>@endforeach
     </tbody></table>

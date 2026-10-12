@@ -40,6 +40,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/surveys/{survey}/pdf', [ReportController::class, 'pdf']);
     Route::get('/reports', [SurveyorReportController::class, 'index'])->middleware('can:reports.export')->name('reports.index');
     Route::get('/reports/print', [SurveyorReportController::class, 'print'])->middleware('can:reports.export')->name('reports.print');
+    Route::get('/reports/results.xlsx', [SurveyorReportController::class, 'excel'])->middleware('can:reports.export')->name('reports.results.excel');
     Route::get('/reports/visits', [ReportController::class, 'visits'])->middleware('can:reports.export');
     Route::get('/reports/excel', [ReportController::class, 'excel'])->middleware('can:reports.export');
     Route::middleware('can:imports.manage')->group(function () {
