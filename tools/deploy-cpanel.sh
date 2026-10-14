@@ -4,13 +4,33 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 php_binary="${PHP_BIN:-php}"
 mode="${1:-update}"
-if [[ "$mode" != "update" && "$mode" != "install" ]]; then
-    echo 'Pemakaian: PHP_BIN=/path/php bash tools/deploy-cpanel.sh [install|update]'
+if [[ "$mode" != "update" && "$mode" != "install" && "$mode" != "pull" ]]; then
+    echo 'Pemakaian: PHP_BIN=/path/php bash tools/deploy-cpanel.sh [install|update|pull]'
     exit 1
 fi
 if [[ ! -f .env || ! -f vendor/autoload.php ]]; then
     echo 'Siapkan .env dan vendor terlebih dahulu. Lihat bagian cPanel pada README.md.'
     exit 1
+fi
+
+if [[ "$mode" == "pull" ]]; then
+    if [[ ! -d .git ]]; then
+        echo 'Folder ini belum terhubung ke GitHub. Ikuti langkah "Update dari GitHub" pada README.md.'
+        exit 1
+    fi
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo 'Ada perubahan file kode langsung di server (lihat: git status). Batalkan dahulu agar tidak tertimpa.'
+        exit 1
+    fi
+    before="$(git rev-parse HEAD)"
+    git fetch --quiet origin main
+    git merge --ff-only origin/main
+    if ! git diff --quiet "$before" HEAD -- composer.lock; then
+        echo 'composer.lock berubah; memasang dependensi produksi...'
+        "${COMPOSER_BIN:-composer}" install --no-dev --optimize-autoloader --no-interaction --no-progress
+    fi
+    echo "Versi kode: $(git log -1 --format='%h %s')"
+    mode=update
 fi
 
 "$php_binary" artisan config:clear --no-interaction

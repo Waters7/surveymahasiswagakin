@@ -195,7 +195,7 @@ Pertahankan **APP_KEY yang sama** dari `.env` lokal ketika memindahkan database 
 
 ### Menjalankan pemasangan
 
-Paket ZIP sudah membawa vendor. Jika mengambil kode melalui Git, jalankan Composer dan build aset di lingkungan build terlebih dahulu; `public/build` tidak disimpan di Git. Dengan Composer pada hosting, periksa kebutuhan aktual menggunakan `composer check-platform-reqs --no-dev`.
+Paket ZIP sudah membawa vendor. Jika mengambil kode melalui Git, hasil build aset (`public/build`) sudah ikut tersimpan di repository; Composer hanya perlu dijalankan saat `composer.lock` berubah. Dengan Composer pada hosting, periksa kebutuhan aktual menggunakan `composer check-platform-reqs --no-dev`.
 
 ```bash
 # Setelah .env terisi dan data lokal diimpor:
@@ -223,3 +223,23 @@ Queue untuk integrasi eksternal belum perlu dijalankan pada tahap ini. Jika nant
 Setelah selesai, jalankan `php artisan gakin:deployment-check` dan `php artisan schedule:list`, lalu periksa `/up`, login admin/surveyor, pembatasan tugas, filter laporan/PDF, upload bukti PKH, GPS dari ponsel, serta QR pada domain baru. Pastikan `/.env`, `/composer.json`, dan `/storage/app/private/` tidak dapat diunduh. Perintah pemeriksaan tidak membuktikan konfigurasi document root, sertifikat, cron yang benar-benar berjalan, atau kuota hosting; bagian tersebut diperiksa melalui cPanel dan browser.
 
 Simpan backup sebelum setiap update. Untuk rollback kode gunakan rilis sebelumnya dengan `.env` dan storage yang sama; rollback database harus mengikuti backup/migrasi yang relevan, bukan menghapus tabel. Cetakan lama yang pernah dibuat di localhost memiliki tautan QR localhost; cetak ulang dari domain hosting untuk tautan yang dapat digunakan penerima.
+
+### Update dari GitHub
+
+Repository: `https://github.com/Waters7/surveymahasiswagakin` (cabang `main`). Hasil build CSS/JS (`public/build`) di-commit bersama kode, sehingga server tidak memerlukan Node.js. Selalu jalankan `npm run build` sebelum commit perubahan tampilan.
+
+**Konversi sekali** folder hasil ekstrak ZIP menjadi salinan Git (tidak menyentuh `.env`, `storage`, maupun `vendor` karena ketiganya diabaikan Git):
+
+```bash
+cd ~/survey-gakin
+git init -q && git remote add origin https://github.com/Waters7/surveymahasiswagakin.git
+git fetch -q origin main && git checkout -q -f -B main origin/main
+```
+
+**Setiap update** cukup satu perintah. Script menolak berjalan bila ada file kode yang diubah langsung di server, menarik `main` secara fast-forward, menjalankan `composer install --no-dev` hanya bila `composer.lock` berubah, lalu menjalankan migrasi dan cache seperti mode `update`:
+
+```bash
+cd ~/survey-gakin && PHP_BIN=php bash tools/deploy-cpanel.sh pull
+```
+
+Bila Composer tidak tersedia sebagai `composer`, isi `COMPOSER_BIN` dengan path Composer di server. Paket ZIP dari `tools/prepare-cpanel.ps1` tetap dapat dipakai sebagai cadangan.
