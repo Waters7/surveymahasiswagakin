@@ -63,10 +63,13 @@ class SurveyController extends Controller
         $photoRules = $r->input('kind') === 'pkh' && $upload instanceof UploadedFile && $upload->isValid() && $upload->getMimeType() === 'application/pdf'
             ? 'required|file|mimes:pdf|max:10240'
             : 'required|image|mimes:jpg,jpeg,png,webp|max:10240|dimensions:max_width=10000,max_height=10000';
-        $d = $r->validate(['revision' => 'required|integer', 'photo' => $photoRules, 'kind' => 'required|in:evidence,group,pkh', 'criterion_id' => 'nullable|integer', 'captured_at' => 'nullable|date']);
+        $d = $r->validate(['revision' => 'required|integer', 'photo' => $photoRules, 'kind' => 'required|in:evidence,group,pkh,video_call', 'criterion_id' => 'nullable|integer', 'captured_at' => 'nullable|date']);
         $path = null;
         try {
             $s = $service->mutate($survey, (int) $d['revision'], function ($s) use ($r, $d, &$path) {
+                if ($d['kind'] === 'video_call' && ! $s->isVideoCall()) {
+                    throw ValidationException::withMessages(['kind' => 'Tangkapan layar video call hanya untuk survey video call.']);
+                }
                 if ($d['kind'] === 'evidence') {
                     abort_unless(isset($d['criterion_id']), 422);
                     $criterion = collect($s->criteria_snapshot)->firstWhere('id', (int) $d['criterion_id']);
@@ -91,7 +94,7 @@ class SurveyController extends Controller
                         imagefilledrectangle($im, 0, imagesy($im) - 64, imagesx($im), imagesy($im), imagecolorallocate($im, 10, 45, 39));
                         $white = imagecolorallocate($im, 255, 255, 255);
                         imagestring($im, 3, 12, imagesy($im) - 54, 'SURVEY GAKIN | '.$s->student->name, $white);
-                        imagestring($im, 3, 12, imagesy($im) - 36, now()->format('d-m-Y H:i').' WITA | '.($s->location?->latitude ?? 'GPS belum diambil').', '.($s->location?->longitude ?? ''), $white);
+                        imagestring($im, 3, 12, imagesy($im) - 36, now()->format('d-m-Y H:i').' WITA | '.($s->isVideoCall() ? 'Survey video call' : ($s->location?->latitude ?? 'GPS belum diambil').', '.($s->location?->longitude ?? '')), $white);
                         imagestring($im, 3, 12, imagesy($im) - 18, 'Poltekkes Kemenkes Manado', $white);
                     }ob_start();
                     imagejpeg($im, null, 85);
@@ -143,6 +146,9 @@ class SurveyController extends Controller
                 $s = Survey::lockForUpdate()->findOrFail($survey->id);
                 Gate::authorize('update', $s);
                 abort_if($s->revision !== (int) $d['revision'], 409);
+                if (! in_array($d['role'], $service->signatureRoles($s), true)) {
+                    throw ValidationException::withMessages(['role' => 'Survey video call hanya ditandatangani oleh surveyor.']);
+                }
                 if ($errors = $service->missing($s, false)) {
                     throw ValidationException::withMessages(['survey' => $errors]);
                 }abort_unless(preg_match('/^data:image\/png;base64,([A-Za-z0-9+\/=]+)$/', $d['image'], $m), 422);

@@ -21,7 +21,7 @@ class ImportController extends Controller
 
     public function upload(Request $r, ImportService $service): RedirectResponse
     {
-        $d = $r->validate(['file' => 'required|file|mimes:xlsx,xls|max:20480', 'type' => 'required|in:students,users', 'sheet' => 'nullable|string|max:100', 'mapping' => 'nullable|json']);
+        $d = $r->validate(['file' => 'required|file|mimes:xlsx,xls|max:20480', 'type' => 'required|in:students,users', 'sheet' => 'nullable|string|max:100', 'mapping' => 'nullable|json', 'survey_method' => 'nullable|in:lokasi,video_call']);
         $map = empty($d['mapping']) ? null : json_decode($d['mapping'], true);
         if ($map) {
             $required = $d['type'] === 'users' ? ['name', 'nip', 'phone', 'email', 'position', 'unit'] : ['name', 'nim', 'semester', 'program', 'phone', 'father_job', 'mother_job', 'father_education', 'mother_education', 'father_phone', 'mother_phone', 'address', 'city', 'team', 'schedule'];
@@ -30,7 +30,7 @@ class ImportController extends Controller
                 abort_unless(is_int($v) && $v >= 0 && $v <= 200, 422);
             }
         }
-        $b = $service->preview($r->file('file')->getRealPath(), $d['type'], $r->file('file')->getClientOriginalName(), $map, $d['sheet'] ?? '');
+        $b = $service->preview($r->file('file')->getRealPath(), $d['type'], $r->file('file')->getClientOriginalName(), $map, $d['sheet'] ?? '', $d['survey_method'] ?? null);
 
         return redirect('/imports/'.$b->uuid);
     }
@@ -58,7 +58,10 @@ class ImportController extends Controller
 
     public function show(ImportBatch $batch): View
     {
-        return view('import-preview', ['batch' => $batch, 'users' => User::role('surveyor')->where('active', true)->get(), 'periods' => SurveyPeriod::all()]);
+        $users = User::role('surveyor')->where('active', true)->orderBy('name')->get();
+        $teams = collect($batch->rows)->pluck('team')->filter()->unique()->values();
+
+        return view('import-preview', ['batch' => $batch, 'users' => $users, 'periods' => SurveyPeriod::all(), 'suggestedSurveyors' => $teams->mapWithKeys(fn (string $team): array => [$team => app(ImportService::class)->suggestSurveyor($team, $users)?->id])->all()]);
     }
 
     public function confirm(Request $r, ImportBatch $batch, ImportService $service): RedirectResponse

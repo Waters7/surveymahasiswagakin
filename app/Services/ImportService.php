@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudyProgram;
 use App\Models\SurveyAssignment;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -31,7 +32,34 @@ class ImportService
         return $s;
     }
 
-    public function preview(string $path, string $type, string $name, ?array $mapping = null, string $sheet = ''): ImportBatch
+    /**
+     * Sarankan akun surveyor untuk nama tim pada Excel; admin tetap memeriksa sebelum konfirmasi.
+     *
+     * @param  Collection<int, User>  $users
+     */
+    public function suggestSurveyor(string $team, Collection $users): ?User
+    {
+        $words = fn (string $name): array => array_values(array_filter(preg_split('/[^A-Z]+/', strtoupper(Str::before($name, ','))), fn (string $word): bool => strlen($word) >= 3));
+        $teamWords = $words($team);
+        if (! $teamWords) {
+            return null;
+        }
+        $matches = $users->filter(function (User $user) use ($words, $teamWords): bool {
+            $nameWords = $words($user->name);
+            foreach ($teamWords as $teamWord) {
+                $found = collect($nameWords)->contains(fn (string $nameWord): bool => $nameWord === $teamWord || (strlen($teamWord) >= 5 && levenshtein($nameWord, $teamWord) <= 2));
+                if (! $found) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    public function preview(string $path, string $type, string $name, ?array $mapping = null, string $sheet = '', ?string $surveyMethod = null): ImportBatch
     {
         $book = IOFactory::load($path);
         $ws = $sheet ? $book->getSheetByName($sheet) : ($type === 'users' ? ($book->getSheetByName('LAPORAN DUK') ?? $book->getActiveSheet()) : $book->getActiveSheet());
@@ -40,7 +68,11 @@ class ImportService
         $map = $mapping ?? ($type === 'users' ? ['name' => 2, 'nip' => 6, 'phone' => 28, 'email' => 30, 'position' => 9, 'unit' => 34] : ['name' => 1, 'nim' => 2, 'semester' => 3, 'program' => 4, 'phone' => 5, 'father_job' => 6, 'mother_job' => 7, 'father_education' => 8, 'mother_education' => 9, 'father_phone' => 10, 'mother_phone' => 11, 'address' => 12, 'city' => 13, 'team' => 14, 'schedule' => 15]);
         $rows = [];
         foreach ($raw as $index => $row) {
-            if (! is_numeric($row[0] ?? null) || ! trim((string) ($row[$map['name']] ?? ''))) {
+            $hasStudentId = $type === 'students' && preg_match('/^\d{8,20}$/', trim(ltrim((string) ($row[$map['nim']] ?? ''), "'")));
+            if ((! is_numeric($row[0] ?? null) && ! $hasStudentId) || ! trim((string) ($row[$map['name']] ?? ''))) {
+                continue;
+            }
+            if ($type === 'students' && $surveyMethod === 'video_call' && ! preg_match('/\bVC\b|video\s*call/i', (string) ($row[$map['schedule']] ?? ''))) {
                 continue;
             }
             $r = ['source_row' => $index + 1];
@@ -56,7 +88,7 @@ class ImportService
         }
         abort_unless(count($rows) > 0 && count($rows) <= 5000, 422, 'Tidak ada baris valid atau lebih dari 5.000 baris. Periksa sheet dan mapping.');
 
-        return ImportBatch::create(['user_id' => auth()->id(), 'type' => $type, 'filename' => $name, 'rows' => $rows, 'mapping' => $map, 'errors' => $this->errors($rows, $type)]);
+        return ImportBatch::create(['user_id' => auth()->id(), 'type' => $type, 'filename' => $name, 'rows' => $rows, 'mapping' => $map, 'errors' => $this->errors($rows, $type), 'survey_method' => $type === 'students' ? ($surveyMethod ?? 'lokasi') : null]);
     }
 
     public function errors(array $rows, string $type): array
@@ -120,7 +152,7 @@ class ImportService
                 }
                 if ($uid = $surveyorMap[$r['team'] ?? ''] ?? null) {
                     abort_unless($periodId, 422, 'Periode wajib dipilih untuk penugasan.');
-                    SurveyAssignment::create(['student_id' => $s->id, 'user_id' => $uid, 'survey_period_id' => $periodId]);
+                    SurveyAssignment::create(['student_id' => $s->id, 'user_id' => $uid, 'survey_period_id' => $periodId, 'method' => $b->survey_method ?? 'lokasi']);
                 }
             }
             $b->update(['status' => 'imported']);

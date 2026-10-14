@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SurveyMethod;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -10,7 +11,12 @@ class SurveyAssignment extends Record
 {
     protected function casts(): array
     {
-        return ['scheduled_at' => 'date', 'scheduled_until' => 'date'];
+        return ['scheduled_at' => 'date', 'scheduled_until' => 'date', 'method' => SurveyMethod::class];
+    }
+
+    public function isVideoCall(): bool
+    {
+        return $this->method === SurveyMethod::VideoCall;
     }
 
     public function scheduleLabel(): string

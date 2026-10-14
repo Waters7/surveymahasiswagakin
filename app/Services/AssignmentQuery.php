@@ -8,14 +8,14 @@ class AssignmentQuery
 {
     public static function filtered($user, array $filters = [])
     {
-        $q = SurveyAssignment::with(['student.program', 'student.address', 'user', 'survey', 'period']);
+        $q = SurveyAssignment::with(['student.program', 'student.address', 'student.parents', 'user', 'survey', 'period']);
         if (! $user->can('surveys.view-all')) {
             $q->where('user_id', $user->id);
         }
         if ($v = $filters['q'] ?? null) {
             $q->whereHas('student', fn ($s) => $s->where(fn ($s) => $s->where('name', 'like', "%$v%")->orWhere('nim', 'like', "%$v%")->orWhere('phone', 'like', "%$v%")->orWhereHas('address', fn ($a) => $a->where('address', 'like', "%$v%"))));
         }
-        foreach (['status', 'user_id', 'survey_period_id', 'survey_team_id'] as $f) {
+        foreach (['status', 'user_id', 'survey_period_id', 'survey_team_id', 'method'] as $f) {
             if ($v = $filters[$f] ?? null) {
                 $q->where($f, $v);
             }

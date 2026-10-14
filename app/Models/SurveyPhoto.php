@@ -21,6 +21,7 @@ class SurveyPhoto extends Record
         return match ($this->kind) {
             'pkh' => 'Bukti penerima PKH',
             'group' => 'Foto bersama',
+            'video_call' => 'Tangkapan layar video call',
             default => 'Bukti kriteria '.$this->criterion_id,
         };
     }

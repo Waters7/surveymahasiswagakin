@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SurveyMethod;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -11,7 +12,7 @@ class Survey extends Record
 {
     protected function casts(): array
     {
-        return ['criteria_snapshot' => 'array', 'rules_snapshot' => 'array', 'settings_snapshot' => 'array', 'student_snapshot' => 'array', 'residence' => 'array', 'pkh' => 'boolean', 'started_at' => 'datetime', 'submitted_at' => 'datetime', 'locked_at' => 'datetime'];
+        return ['criteria_snapshot' => 'array', 'rules_snapshot' => 'array', 'settings_snapshot' => 'array', 'student_snapshot' => 'array', 'residence' => 'array', 'pkh' => 'boolean', 'started_at' => 'datetime', 'submitted_at' => 'datetime', 'locked_at' => 'datetime', 'method' => SurveyMethod::class];
     }
 
     use SoftDeletes;
@@ -64,6 +65,11 @@ class Survey extends Record
     public function travel(): BelongsTo
     {
         return $this->belongsTo(TravelLink::class, 'travel_link_id');
+    }
+
+    public function isVideoCall(): bool
+    {
+        return $this->method === SurveyMethod::VideoCall;
     }
 
     public function editable(): bool

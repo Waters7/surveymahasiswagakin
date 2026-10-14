@@ -90,7 +90,7 @@ class SurveyorReportController extends Controller
         for ($position = 1; $position <= $criterionCount; $position++) {
             $columns = array_merge($columns, ['Kriteria '.$position, 'Jawaban '.$position, 'Rincian '.$position, 'Catatan '.$position]);
         }
-        $columns = array_merge($columns, ['PKH', 'Jumlah bukti PKH', 'Sesuai', 'Tidak sesuai', 'Perlu verifikasi', 'Kesimpulan', 'Rekomendasi', 'Status verifikasi']);
+        $columns = array_merge($columns, ['PKH', 'Jumlah bukti PKH', 'Sesuai', 'Tidak sesuai', 'Perlu verifikasi', 'Kesimpulan', 'Rekomendasi', 'Status verifikasi', 'Metode survey']);
         $rows = [];
         foreach ($surveys as $index => $survey) {
             Gate::authorize('view', $survey);
@@ -102,7 +102,7 @@ class SurveyorReportController extends Controller
                 $answer = $criterion ? $survey->answers->firstWhere('criterion_id', $criterion['id']) : null;
                 $row = array_merge($row, [$criterion['label'] ?? '', str_replace('_', ' ', $answer?->answer ?? ''), $answer?->detail ?? '', $answer?->notes ?? '']);
             }
-            $rows[] = array_merge($row, [$survey->pkh === null ? '' : ($survey->pkh ? 'Ya' : 'Tidak'), $survey->photos->where('kind', 'pkh')->count(), $survey->answers->where('answer', 'ya')->count(), $survey->answers->where('answer', 'tidak')->count(), $survey->answers->where('answer', 'perlu_verifikasi')->count(), $survey->conclusion, str_replace('_', ' ', $survey->recommendation ?? ''), str_replace('_', ' ', $survey->status)]);
+            $rows[] = array_merge($row, [$survey->pkh === null ? '' : ($survey->pkh ? 'Ya' : 'Tidak'), $survey->photos->where('kind', 'pkh')->count(), $survey->answers->where('answer', 'ya')->count(), $survey->answers->where('answer', 'tidak')->count(), $survey->answers->where('answer', 'perlu_verifikasi')->count(), $survey->conclusion, str_replace('_', ' ', $survey->recommendation ?? ''), str_replace('_', ' ', $survey->status), $survey->method?->label()]);
         }
         $response = Excel::download(new SurveyExport($rows, $columns), 'hasil-survey-gakin.xlsx', null, ['Cache-Control' => 'private, no-store']);
         Audit::record('report.surveyor-excel', 'surveys', [], ['count' => $surveys->count(), 'survey_uuids' => $surveys->pluck('uuid')->all(), 'filters' => $filters]);

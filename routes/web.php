@@ -17,7 +17,8 @@ Route::middleware('guest')->group(function () {
 Route::get('/verify/{token}', [ReportController::class, 'verify'])->middleware('throttle:30,1');
 Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-    Route::get('/tasks', [DashboardController::class, 'tasks']);
+    Route::get('/tasks', [DashboardController::class, 'tasks'])->name('tasks.location');
+    Route::get('/tasks/video-call', [DashboardController::class, 'tasks'])->defaults('method', 'video_call')->name('tasks.video-call');
     Route::get('/map', [DashboardController::class, 'map']);
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::view('/profile', 'profile')->name('profile');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\SurveyMethod;
 use App\Models\ImportBatch;
 use App\Models\Student;
 use App\Models\StudentAddress;
@@ -30,11 +31,12 @@ class DashboardController extends Controller
         return view('dashboard', compact('kpis', 'programs', 'surveyors', 'cities', 'recent', 'imports'));
     }
 
-    public function tasks(Request $r): View
+    public function tasks(Request $r, string $method = 'lokasi'): View
     {
-        $assignments = AssignmentQuery::filtered($r->user(), $r->all())->latest()->paginate(15)->withQueryString();
+        $method = SurveyMethod::from($method);
+        $assignments = AssignmentQuery::filtered($r->user(), ['method' => $method->value] + $r->except('method'))->latest()->paginate(15)->withQueryString();
 
-        return view('tasks', compact('assignments') + ['programs' => StudyProgram::all(), 'periods' => SurveyPeriod::all(), 'users' => User::role('surveyor')->get(), 'cities' => StudentAddress::distinct()->pluck('city')]);
+        return view('tasks', compact('assignments', 'method') + ['programs' => StudyProgram::all(), 'periods' => SurveyPeriod::all(), 'users' => User::role('surveyor')->get(), 'cities' => StudentAddress::distinct()->pluck('city')]);
     }
 
     public function map(Request $r): View

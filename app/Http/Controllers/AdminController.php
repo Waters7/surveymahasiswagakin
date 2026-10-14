@@ -57,7 +57,7 @@ class AdminController extends Controller
 
     public function assign(Request $r): RedirectResponse
     {
-        $d = $r->validate(['students' => 'required|array|min:1|max:500', 'students.*' => 'required|integer|exists:students,id', 'user_id' => 'required|integer|exists:users,id', 'period_id' => 'required|integer|exists:survey_periods,id', 'scheduled_at' => 'nullable|date|required_with:scheduled_until', 'scheduled_until' => 'nullable|date|after_or_equal:scheduled_at', 'assignment_reference' => 'nullable|string|max:255']);
+        $d = $r->validate(['students' => 'required|array|min:1|max:500', 'students.*' => 'required|integer|exists:students,id', 'user_id' => 'required|integer|exists:users,id', 'period_id' => 'required|integer|exists:survey_periods,id', 'scheduled_at' => 'nullable|date|required_with:scheduled_until', 'scheduled_until' => 'nullable|date|after_or_equal:scheduled_at', 'assignment_reference' => 'nullable|string|max:255', 'method' => 'nullable|in:lokasi,video_call']);
         $u = User::findOrFail($d['user_id']);
         abort_unless($u->active && $u->hasRole('surveyor'), 422, 'Surveyor harus aktif.');
         $p = SurveyPeriod::findOrFail($d['period_id']);
@@ -68,7 +68,7 @@ class AdminController extends Controller
             foreach ($d['students'] as $id) {
                 $a = SurveyAssignment::firstOrNew(['student_id' => $id, 'survey_period_id' => $d['period_id']]);
                 abort_if($a->exists && $a->survey, 422, 'Survey sudah dimulai; penugasan tidak boleh diganti.');
-                $a->fill(['user_id' => $u->id, 'scheduled_at' => $d['scheduled_at'] ?? null, 'scheduled_until' => $d['scheduled_until'] ?? null, 'assignment_reference' => $d['assignment_reference'] ?? null, 'status' => ! empty($d['scheduled_at']) ? 'dijadwalkan' : 'belum_dijadwalkan', 'travel_link_id' => null]);
+                $a->fill(['user_id' => $u->id, 'scheduled_at' => $d['scheduled_at'] ?? null, 'scheduled_until' => $d['scheduled_until'] ?? null, 'assignment_reference' => $d['assignment_reference'] ?? null, 'status' => ! empty($d['scheduled_at']) ? 'dijadwalkan' : 'belum_dijadwalkan', 'travel_link_id' => null, 'method' => $d['method'] ?? 'lokasi']);
                 $a->save();
                 Audit::record('assignment.saved', $a);
             }
