@@ -120,6 +120,18 @@ class SurveyWorkflowTest extends TestCase
         }
     }
 
+    public function test_criterion_photo_upload_is_linked_to_its_answer(): void
+    {
+        $s = $this->survey();
+        $criterion = collect($s->criteria_snapshot)->first(fn (array $c): bool => $c['evidence_mode'] !== 'disabled');
+
+        $this->post('/surveys/'.$s->uuid.'/photos', ['revision' => $s->revision, 'kind' => 'evidence', 'criterion_id' => $criterion['id'], 'photo' => UploadedFile::fake()->image('kriteria.jpg', 800, 600)], ['Accept' => 'application/json'])->assertOk();
+
+        $photo = $s->photos()->firstOrFail();
+        $this->assertSame($criterion['id'], $photo->criterion_id);
+        $this->assertTrue($s->answers()->where('criterion_id', $criterion['id'])->firstOrFail()->evidences()->where('survey_photo_id', $photo->id)->exists());
+    }
+
     public function test_surveyor_cannot_see_or_edit_another_survey(): void
     {
         $s = $this->survey();
