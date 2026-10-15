@@ -29,7 +29,7 @@
         <tr>
             <td data-label="Pengguna"><div class="student-name"><span class="avatar">{{mb_substr($user->name, 0, 1)}}</span><div><strong>{{$user->name}}</strong><small>{{$pendingEmail ? 'Email belum diisi' : $user->email}}@if($user->nip) · NIP {{$user->nip}}@endif</small></div></div></td>
             <td data-label="Peran">@forelse($user->roles as $role)<span class="badge">{{$roleLabel($role->name)}}</span>@empty<span class="muted">Belum ada peran</span>@endforelse</td>
-            <td data-label="Status"><span class="badge {{$user->active ? 'success' : ''}}">{{$user->active ? 'Aktif' : 'Nonaktif'}}</span>@if($user->active && $user->must_change_password)<small>Wajib ganti password</small>@endif @if($pendingEmail)<small class="text-warning">Email perlu diperbaiki</small>@endif @if($user->integration)<small>Terhubung PANGI</small>@endif</td>
+            <td data-label="Status"><span class="badge {{$user->active ? 'success' : ''}}">{{$user->active ? 'Aktif' : 'Nonaktif'}}</span>@if($user->active && $user->must_change_password)<small>Wajib ganti password</small>@endif @if($pendingEmail)<small class="text-warning">Email perlu diperbaiki</small>@endif </td>
             <td data-label="Terakhir masuk">@if($user->last_login_at){{$user->last_login_at->timezone('Asia/Makassar')->format('d M Y H:i')}}<small>WITA</small>@else<span class="muted">Belum pernah</span>@endif</td>
             <td class="row-actions"><a class="btn" href="{{route('users.edit', $user)}}" aria-label="Edit {{$user->name}}"><x-icon name="pencil" size="15"/>Edit</a></td>
         </tr>

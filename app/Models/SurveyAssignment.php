@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\SurveyMethod;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SurveyAssignment extends Record
@@ -55,6 +56,16 @@ class SurveyAssignment extends Record
     public function survey(): HasOne
     {
         return $this->hasOne(Survey::class);
+    }
+
+    public function failures(): HasMany
+    {
+        return $this->hasMany(SurveyFailure::class);
+    }
+
+    public function latestFailure(): HasOne
+    {
+        return $this->hasOne(SurveyFailure::class)->latestOfMany('occurred_at');
     }
 
     public function travel(): BelongsTo

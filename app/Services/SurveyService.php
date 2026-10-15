@@ -2,16 +2,21 @@
 
 namespace App\Services;
 
+use App\Enums\SurveyFailureReason;
 use App\Enums\SurveyMethod;
+use App\Enums\SurveyStatus;
 use App\Events\SurveySubmitted;
 use App\Models\Survey;
 use App\Models\SurveyAssignment;
+use App\Models\SurveyFailure;
 use App\Models\SurveyStatusHistory;
 use App\Models\SystemSetting;
 use App\Models\TravelVisitLog;
 use App\Notifications\SurveyNotice;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -40,6 +45,67 @@ class SurveyService
 
             return $s->fresh();
         });
+    }
+
+    /**
+     * Mencatat kunjungan yang tidak dapat dilaksanakan beserta bukti gambarnya.
+     * Penugasan tetap dapat dicoba lagi lewat Mulai survey.
+     *
+     * @param  list<UploadedFile>  $evidence
+     */
+    public function fail(SurveyAssignment $assignment, SurveyFailureReason $reason, ?string $notes, array $evidence = []): SurveyFailure
+    {
+        abort_unless(auth()->user()->can('surveys.work') && $assignment->user_id === auth()->id(), 403);
+        $stored = [];
+        try {
+            foreach ($evidence as $file) {
+                $bytes = $this->failureEvidenceImage($file, $assignment->student->name);
+                $path = 'failures/'.$assignment->uuid.'/'.Str::uuid().'.jpg';
+                Storage::disk('local')->put($path, $bytes);
+                $stored[] = ['path' => $path, 'sha256' => hash('sha256', $bytes), 'original_name' => mb_substr($file->getClientOriginalName(), 0, 255)];
+            }
+
+            return DB::transaction(function () use ($assignment, $reason, $notes, $stored) {
+                $a = SurveyAssignment::lockForUpdate()->findOrFail($assignment->id);
+                abort_if($a->survey?->submitted_at, 422, 'Survey sudah dikirim sehingga tidak dapat dicatat gagal.');
+                $failure = $a->failures()->create(['user_id' => $a->user_id, 'reason' => $reason, 'notes' => filled($notes) ? trim($notes) : null, 'evidence' => $stored, 'occurred_at' => now()]);
+                $a->update(['status' => SurveyStatus::Failed->value]);
+                if ($a->travel) {
+                    app(TravelReportBuilder::class)->invalidate($a->travel);
+                }
+                Audit::record('survey.failed', $a, [], ['reason' => $reason->value, 'evidence_count' => count($stored)]);
+
+                return $failure;
+            });
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete(array_column($stored, 'path'));
+            throw $e;
+        }
+    }
+
+    /**
+     * Gambar bukti diperkecil dan disimpan ulang sebagai JPEG agar metadata asli (termasuk GPS) terbuang.
+     */
+    private function failureEvidenceImage(UploadedFile $file, string $studentName): string
+    {
+        $im = imagecreatefromstring((string) file_get_contents($file->getRealPath()));
+        if (! $im) {
+            throw ValidationException::withMessages(['evidence' => 'Bukti gambar tidak dapat dibaca.']);
+        }
+        if (max(imagesx($im), imagesy($im)) > 1920) {
+            $scaled = imagescale($im, (int) (imagesx($im) * 1920 / max(imagesx($im), imagesy($im))));
+            imagedestroy($im);
+            $im = $scaled;
+        }
+        imagefilledrectangle($im, 0, imagesy($im) - 46, imagesx($im), imagesy($im), imagecolorallocate($im, 10, 45, 39));
+        $white = imagecolorallocate($im, 255, 255, 255);
+        imagestring($im, 3, 12, imagesy($im) - 38, 'SURVEY GAKIN | Bukti gagal survey | '.$studentName, $white);
+        imagestring($im, 3, 12, imagesy($im) - 20, now()->format('d-m-Y H:i').' WITA | Poltekkes Kemenkes Manado', $white);
+        ob_start();
+        imagejpeg($im, null, 85);
+        imagedestroy($im);
+
+        return (string) ob_get_clean();
     }
 
     public function mutate(Survey $survey, int $revision, callable $operation): Survey

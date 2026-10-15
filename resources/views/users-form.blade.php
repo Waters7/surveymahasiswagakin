@@ -80,12 +80,7 @@
         </section>
         <section class="card card-body">
             <h2>Integrasi PANGI</h2>
-            <p class="muted">Opsional. Isi UUID pengguna dari administrator PANGI untuk menghubungkan laporan perjalanan dinas.</p>
-            <div class="field" style="margin-top:18px">
-                <label for="user-external">UUID pengguna PANGI</label>
-                <input id="user-external" name="external_user_id" value="{{old('external_user_id', $user?->integration?->external_user_id)}}" autocomplete="off" placeholder="Contoh: 0f8fad5b-d9cb-469f-a165-70867728950e" @error('external_user_id') aria-invalid="true" @enderror>
-                @error('external_user_id')<small class="field-error">{{$message}}</small>@enderror
-            </div>
+            <p class="muted">Akun dicocokkan otomatis dengan pegawai PANGI berdasarkan NIP. Pastikan NIP pada bagian Identitas sama persis dengan NIP pegawai di PANGI.</p>
         </section>
     </div>
     <div class="sticky-actions"><span class="muted">Kolom bertanda * wajib diisi.</span><div class="heading-actions"><a class="btn" href="{{route('users.index')}}">Batal</a><button class="btn primary"><x-icon name="check-circle-2" size="16"/>{{$user ? 'Simpan perubahan' : 'Buat pengguna'}}</button></div></div>

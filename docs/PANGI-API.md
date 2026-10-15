@@ -1,34 +1,35 @@
 # Kontrak integrasi PANGI
 
-Kontrak ini adalah rancangan endpoint yang perlu disediakan atau disesuaikan di server PANGI. Keberadaan endpoint tersebut belum dikonfirmasi dan belum diuji terhadap server produksi. Aplikasi GAKIN sudah memiliki klien, pembangun draft, antrean pengiriman, preview, log, dan pengujian HTTP simulasi.
+Jalur ini disediakan PANGI di `/api/integrations/gakin` (branch `claude/integrasi-gakin` di repositori PANGI) dan dipakai klien `App\Services\PangiClient`. Kedua sisi sudah diuji dengan tes otomatis; uji di server produksi PANGI belum dilakukan.
 
 ## Autentikasi dan kepemilikan
 
 Base URL: `https://pangi.poltekkes-manado.ac.id/api/integrations/gakin`.
 
-Semua endpoint menggunakan HTTPS, bearer token server dengan scope `gakin.read-trips` dan/atau `gakin.write-report-draft`, serta header `X-Pangi-User` berisi UUID pengguna yang telah dipetakan admin. Header ini tidak boleh dipercaya tanpa pemeriksaan token. PANGI harus mengizinkan token integrasi mewakili pengguna tersebut dan mengecek kepemilikan perjalanan di setiap endpoint. NIP/email hanya membantu pencocokan identitas; nama tidak dipakai sebagai identifier.
+Setiap permintaan membawa bearer token server dan header `X-Pangi-User` berisi **NIP** akun GAKIN. Token sama dipasang di `.env` kedua aplikasi (`PANGI_TOKEN` di GAKIN, `PANGI_GAKIN_TOKEN` di PANGI); token kosong di PANGI membuat jalur tertutup (503). PANGI mencocokkan NIP dengan tepat satu pegawai, lalu mengecek kepemilikan usulan di setiap endpoint. Nama tidak dipakai sebagai identitas, jadi NIP di GAKIN harus sama persis dengan NIP pegawai di PANGI.
 
-Rate limit yang disarankan: 60 permintaan per menit per token; respons 429 disertai `Retry-After`. Jangan menulis bearer token, seluruh payload, rincian ekonomi keluarga, atau foto ke log. Token dipasang melalui `.env`, bukan formulir web. Rotasi token dilakukan oleh pengelola kedua sistem.
+GAKIN wajib HTTPS. HTTP hanya diterima untuk `127.0.0.1`/`localhost` saat `APP_ENV=local`. Batas laju 60 permintaan per menit; token dan payload tidak dicatat ke log.
 
 ## Endpoint
 
 | Metode | Path | Respons / perilaku |
 |---|---|---|
-| GET | `/me/trips` | `{"data":[Trip,...]}` hanya perjalanan pelaksana terautentikasi |
-| GET | `/trips/{uuid}` | `{"data":Trip}`; 403 jika bukan milik pelaksana |
-| GET | `/trips/{uuid}/report-status` | `{"data":{"locked":false,"status":"draft"}}` |
-| POST | `/trips/{uuid}/report-draft` | Alternatif create; idempotensi tetap wajib |
-| PUT | `/trips/{uuid}/report-draft` | Upsert draft; metode yang dipakai klien GAKIN |
+| GET | `/me/trips` | `{"data":[Trip,...]}` usulan berstatus disetujui milik pelaksana |
+| GET | `/trips/{id}` | `{"data":Trip}`; 403 bila bukan milik pelaksana, 404 bila tidak ada |
+| GET | `/trips/{id}/report-status` | `{"data":{"locked":false,"status":"belum_ada"}}` |
+| PUT | `/trips/{id}/report-draft` | Upsert draft Laporan Perjadin; satu-satunya jalur tulis API PANGI |
 
-`Trip` minimal:
+`{id}` adalah id usulan PANGI. Setiap peserta rombongan memiliki usulan sendiri, sehingga laporan selalu per pelaksana.
+
+`Trip`:
 
 ```json
 {
-  "uuid": "22222222-2222-4222-8222-222222222222",
-  "user_uuid": "11111111-1111-4111-8111-111111111111",
-  "spd_number": "090/CONTOH/2026",
-  "proposal_uuid": null,
-  "assignment_number": "ST/CONTOH/2026",
+  "uuid": "1287",
+  "user_uuid": "199310182025061003",
+  "spd_number": "KU.02.05/F.XXX.8/123/2026",
+  "proposal_uuid": "USL-2026-123",
+  "assignment_number": "TGS-2026-123",
   "destination": "Kabupaten Minahasa",
   "starts_at": "2026-10-12",
   "ends_at": "2026-10-16",
@@ -36,30 +37,21 @@ Rate limit yang disarankan: 60 permintaan per menit per token; respons 429 diser
 }
 ```
 
-Status perjalanan yang dapat dipakai klien: `active` atau `approved`. Penugasan harus milik pelaksana yang sama, terjadwal di dalam tanggal perjalanan, serta belum dimulai. Satu SPD dapat dimiliki beberapa pelaksana, tetapi draft diidentifikasi per pelaksana, bukan SPD saja.
-
 ## Payload draft
 
-Payload dibentuk dari survey terkunci milik pelaksana pada perjalanan tersebut. Tanggal/jam menggunakan Asia/Makassar. Lokasi yang dikirim hanya kabupaten/kota, bukan alamat rumah atau koordinat. Kolom fakta di preview tidak dapat diedit bebas; hanya rencana tindak lanjut dapat disunting. Refresh membentuk kembali laporan dari database.
+Payload dibentuk dari survey terkunci milik pelaksana pada perjalanan tersebut. Tanggal/jam memakai Asia/Makassar. Lokasi hanya kabupaten/kota. Hanya tindak lanjut yang dapat disunting di preview; fakta lain dibentuk ulang dari database.
 
 ```json
 {
   "external_source": "survey-gakin",
   "external_reference": "SG-UUID-TRAVEL-LINK",
-  "travel_uuid": "22222222-2222-4222-8222-222222222222",
+  "travel_uuid": "1287",
   "daily_activities": [{
     "date": "2026-10-15",
     "start_time": "08:20",
     "end_time": "09:05",
     "description": "Melaksanakan Survey GAKIN terhadap 1 mahasiswa: Nama Contoh.",
-    "locations": ["Kabupaten Minahasa"],
-    "visits": [{
-      "student_name": "Nama Contoh",
-      "study_program": "Diploma Tiga Farmasi",
-      "location": "Kabupaten Minahasa",
-      "started_at": "08:20",
-      "completed_at": "09:05"
-    }]
+    "locations": ["Kabupaten Minahasa"]
   }],
   "target_count": 1,
   "completed_count": 1,
@@ -69,20 +61,28 @@ Payload dibentuk dari survey terkunci milik pelaksana pada perjalanan tersebut. 
 }
 ```
 
-PANGI harus mengabaikan/menolak properti di luar daftar yang disepakati. GAKIN tidak mengirim penghasilan, PKH, kondisi kesehatan, rekomendasi ekonomi individual, checklist, foto, tanda tangan, atau detail GPS.
+Kunjungan yang dicatat **Gagal survey** di kartu tugas ikut masuk ke kegiatan harian pada tanggal kejadiannya, misalnya `Survey belum berhasil dilaksanakan terhadap 1 mahasiswa: Nama Contoh (tidak di rumah).`, dan jumlahnya disebut di `result_summary`. Alasan yang dikirim hanya label (tidak dapat dihubungi, tidak di rumah) atau keterangan surveyor untuk alasan lainnya. Kegagalan di luar tanggal perjalanan atau yang disusul survey berhasil pada hari yang sama tidak dicantumkan. Gambar bukti gagal survey tetap di GAKIN.
+
+PANGI hanya menyimpan kolom di atas dan membuang properti lain. GAKIN tidak mengirim penghasilan, PKH, kondisi kesehatan, rekomendasi ekonomi, checklist, jawaban kuesioner, foto, tanda tangan, alamat rumah, nomor HP, atau koordinat GPS.
+
+Di PANGI, isian dipetakan ke Laporan Perjadin usulan tersebut:
+
+- `daily_activities` → Laporan Kegiatan bertanda sumber GAKIN (uraian ditambah jam kegiatan). Kegiatan yang diketik pelaksana di PANGI tidak disentuh.
+- `result_summary` → Hasil, `conclusion` → Kesimpulan. Hanya ditulis bila kolom masih kosong atau masih sama dengan kiriman GAKIN sebelumnya, sehingga suntingan pelaksana di PANGI tidak tertimpa.
+- `follow_up` → Tindak Lanjut berstatus rencana, bertanda sumber GAKIN.
+
+Tanggal kegiatan harus di antara tanggal mulai dan selesai usulan (422 bila tidak).
 
 ## Idempotensi dan penguncian
 
-Setiap PUT membawa `Idempotency-Key: GAKIN-{travel-link-uuid}-{sha256-payload}`. Kunci tetap sama untuk retry payload identik. Perubahan isi membuat kunci baru, dengan `external_reference` tetap sama. PANGI perlu memiliki unique constraint untuk `(external_source, external_reference, performer_uuid)` serta tabel penerimaan idempotensi. Di dalam transaction, kunci record draft, cek lock, lalu upsert hanya draft milik pelaksana yang bersangkutan.
+Setiap PUT membawa `Idempotency-Key: GAKIN-{travel-link-uuid}-{sha256-payload}`. Kunci tetap sama untuk retry payload identik dan berubah bila isi berubah. PANGI menyimpan kunci terakhir per usulan; kunci yang sama mengembalikan hasil sebelumnya tanpa menulis ulang. Pemeriksaan kunci dan status laporan dilakukan dalam transaksi dengan penguncian baris.
 
-Respons sukses: 200/201, misalnya `{"data":{"uuid":"REPORT-UUID","status":"draft","locked":false}}`. Payload sama dengan kunci yang sama harus mengembalikan hasil sebelumnya tanpa duplikasi. 409/423 berarti terkunci atau konflik yang memerlukan pemeriksaan; GAKIN menghentikan retry otomatis. 401/403 untuk token/ownership; 422 untuk validasi; 429/5xx/timeouts dapat dicoba lagi dengan kunci sama.
-
-Klien mengecek status dan kepemilikan ulang sebelum PUT. PANGI tetap harus mengecek lock secara atomik saat PUT karena status dapat berubah setelah GET. Queue GAKIN menahan pengiriman ganda per perjalanan, menggunakan retry 30/120/300 detik dan log yang telah disanitasi.
+Respons: 201 saat laporan baru dibuat, 200 saat diperbarui, dengan `{"data":{"uuid":"REPORT-ID","status":"draft","locked":false}}`. 423 berarti laporan sudah dikirim, dikonfirmasi, atau perjalanan selesai; GAKIN menghentikan retry otomatis. 401/403 untuk token/kepemilikan; 422 untuk validasi atau usulan yang belum disetujui; 429/5xx/timeout dapat dicoba lagi dengan kunci sama.
 
 ## Batas kewenangan
 
-Tidak ada endpoint approve, submit laporan final, tanda tangan pimpinan, atau pembuatan QR persetujuan PANGI. Hasil sinkronisasi tetap draft. Pelaksana membuka PANGI untuk memeriksa dan melanjutkan workflow persetujuan resmi di sana. Auto-prepare hanya menyiapkan draft; pengiriman memerlukan centang konfirmasi dan tombol Kirim oleh pemilik laporan.
+Tidak ada endpoint approve, submit laporan final, tanda tangan pimpinan, atau QR persetujuan PANGI. Hasil sinkronisasi tetap draft. Pelaksana membuka PANGI untuk memeriksa dan mengirim laporan lewat workflow resmi. Auto-prepare hanya menyiapkan draft; pengiriman memerlukan centang konfirmasi dan tombol Kirim oleh pemilik laporan.
 
 ## Uji penerimaan bersama pengelola PANGI
 
-Uji token valid/kedaluwarsa; UUID pengguna/NIP yang salah; perjalanan orang lain; tanggal tidak relevan; upsert pertama; retry setelah timeout; dua klik bersamaan; perubahan draft; lock di antara GET dan PUT; dan pemeriksaan bahwa daftar field sensitif tidak terkirim. Gunakan staging dan data sintetis sebelum mengaktifkan `PANGI_ENABLED=true` di produksi.
+Uji token salah dan kosong; NIP yang tidak cocok; perjalanan orang lain; tanggal di luar rentang; upsert pertama; retry dengan kunci sama; perubahan draft; laporan yang sudah dikirim; serta pemeriksaan bahwa field sensitif tidak terkirim. Gunakan data sintetis sebelum mengaktifkan `PANGI_ENABLED=true` di produksi.

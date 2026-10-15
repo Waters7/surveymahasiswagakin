@@ -8,6 +8,7 @@ enum SurveyStatus: string
     case Scheduled = 'dijadwalkan';
     case Traveling = 'dalam_perjalanan';
     case Surveying = 'sedang_disurvey';
+    case Failed = 'gagal_survey';
     case Draft = 'draft';
     case Completed = 'selesai';
     case Pending = 'menunggu_verifikasi';

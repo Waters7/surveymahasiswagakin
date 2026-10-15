@@ -1,1 +1,1 @@
-@props(['status'])<span class="badge {{in_array($status,['disetujui','direkomendasikan','synced','imported'])?'success':(in_array($status,['perlu_revisi','failed','tidak_direkomendasikan'])?'warning':'')}}">{{ucwords(str_replace('_',' ',$status??'Belum survey'))}}</span>
+@props(['status'])<span class="badge {{in_array($status,['disetujui','direkomendasikan','synced','imported'])?'success':(in_array($status,['perlu_revisi','failed','tidak_direkomendasikan','gagal_survey'])?'warning':'')}}">{{ucwords(str_replace('_',' ',$status??'Belum survey'))}}</span>

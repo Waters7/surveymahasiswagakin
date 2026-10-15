@@ -29,6 +29,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         return back();
     })->name('profile.read');
     Route::post('/assignments/{assignment}/start', [SurveyController::class, 'start']);
+    Route::post('/assignments/{assignment}/fail', [SurveyController::class, 'fail'])->middleware('throttle:30,1');
+    Route::get('/survey-failures/{failure}/evidence/{index}', [SurveyController::class, 'failureEvidence'])->whereNumber('index');
     Route::get('/surveys/{survey}', [SurveyController::class, 'show']);
     Route::get('/surveys/{survey}/state', [SurveyController::class, 'state']);
     Route::post('/surveys/{survey}/draft', [SurveyController::class, 'save'])->middleware('throttle:120,1');

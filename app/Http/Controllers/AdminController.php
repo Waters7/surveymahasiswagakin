@@ -11,7 +11,6 @@ use App\Models\SurveyFormVersion;
 use App\Models\SurveyPeriod;
 use App\Models\SystemSetting;
 use App\Models\User;
-use App\Models\UserIntegration;
 use App\Notifications\SurveyNotice;
 use App\Services\Audit;
 use Illuminate\Contracts\View\View;
@@ -81,7 +80,7 @@ class AdminController extends Controller
     public function users(Request $r): View
     {
         $filters = $r->validate(['q' => 'nullable|string|max:100', 'role' => 'nullable|string|exists:roles,name', 'status' => 'nullable|in:aktif,nonaktif,ganti-password,email']);
-        $q = User::with('roles', 'integration')->select('users.*')
+        $q = User::with('roles')->select('users.*')
             ->addSelect(['last_login_at' => AuditLog::select('created_at')->whereColumn('user_id', 'users.id')->where('action', 'auth.login')->latest()->limit(1)])
             ->withCasts(['last_login_at' => 'datetime']);
         if ($search = $filters['q'] ?? null) {
@@ -104,14 +103,14 @@ class AdminController extends Controller
 
     public function userForm(?User $user = null): View
     {
-        $user?->load('roles', 'integration');
+        $user?->load('roles');
 
         return view('users-form', ['user' => $user, 'roles' => Role::orderBy('name')->pluck('name'), 'lastLoginAt' => $user ? AuditLog::where('user_id', $user->id)->where('action', 'auth.login')->latest()->value('created_at') : null]);
     }
 
     public function userSave(Request $r, ?User $user = null): RedirectResponse
     {
-        $d = $r->validate(['name' => 'required|string|max:255', 'email' => ['required', 'email', Rule::unique('users')->ignore($user?->id)], 'nip' => ['nullable', 'regex:/^\d{18}$/', Rule::unique('users')->ignore($user?->id)], 'phone' => 'nullable|string|max:30', 'unit' => 'nullable|string|max:255', 'position' => 'nullable|string|max:255', 'role' => 'required|exists:roles,name', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128', 'external_user_id' => 'nullable|uuid'], ['nip.regex' => 'NIP harus 18 digit angka.']);
+        $d = $r->validate(['name' => 'required|string|max:255', 'email' => ['required', 'email', Rule::unique('users')->ignore($user?->id)], 'nip' => ['nullable', 'regex:/^\d{18}$/', Rule::unique('users')->ignore($user?->id)], 'phone' => 'nullable|string|max:30', 'unit' => 'nullable|string|max:255', 'position' => 'nullable|string|max:255', 'role' => 'required|exists:roles,name', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128'], ['nip.regex' => 'NIP harus 18 digit angka.']);
         if ((! $user || (! $user->active && $d['active'])) && empty($d['password'])) {
             throw ValidationException::withMessages(['password' => $user ? 'Password awal wajib diisi untuk mengaktifkan akun.' : 'Password awal wajib diisi untuk pengguna baru.']);
         }
@@ -120,16 +119,13 @@ class AdminController extends Controller
         }
         DB::transaction(function () use ($d, $user) {
             $u = $user ?? new User;
-            $u->fill(collect($d)->except(['role', 'password', 'external_user_id'])->all());
+            $u->fill(collect($d)->except(['role', 'password'])->all());
             if (! empty($d['password'])) {
                 $u->password = $d['password'];
                 $u->must_change_password = true;
             }
             $u->save();
             $u->syncRoles([$d['role']]);
-            if (! empty($d['external_user_id'])) {
-                UserIntegration::updateOrCreate(['user_id' => $u->id], ['external_user_id' => $d['external_user_id'], 'nip' => $u->nip, 'email' => $u->email, 'connected_at' => now(), 'status' => 'connected']);
-            }
             Audit::record('user.saved', $u, [], ['role' => $d['role'], 'active' => (bool) $d['active']]);
         });
 

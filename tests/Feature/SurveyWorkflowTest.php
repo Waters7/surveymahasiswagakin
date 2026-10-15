@@ -2,16 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SurveyFailureReason;
 use App\Jobs\SyncPangiDraft;
 use App\Models\ImportBatch;
 use App\Models\Student;
 use App\Models\StudyProgram;
 use App\Models\Survey;
 use App\Models\SurveyAssignment;
+use App\Models\SurveyFailure;
 use App\Models\SurveyPeriod;
 use App\Models\TravelLink;
 use App\Models\User;
-use App\Models\UserIntegration;
 use App\Services\ImportService;
 use App\Services\PangiClient;
 use App\Services\RecommendationService;
@@ -288,7 +289,7 @@ class SurveyWorkflowTest extends TestCase
 
     private function makeTravel(): TravelLink
     {
-        UserIntegration::create(['user_id' => $this->worker->id, 'external_user_id' => '11111111-1111-4111-8111-111111111111', 'connected_at' => now()]);
+        $this->worker->update(['nip' => '199310182025061003']);
 
         return TravelLink::create(['user_id' => $this->worker->id, 'pangi_trip_id' => '22222222-2222-4222-8222-222222222222', 'spd_number' => 'SPD-TEST', 'starts_at' => '2026-01-01', 'ends_at' => '2026-12-31', 'trip_data' => []]);
     }
@@ -302,7 +303,8 @@ class SurveyWorkflowTest extends TestCase
         $b = app(TravelReportBuilder::class);
         $d = $b->build($t);
         $this->assertEquals(1, $d['completed_count']);
-        $this->assertEquals('Mahasiswa Test', $d['daily_activities'][0]['visits'][0]['student_name']);
+        $this->assertSame('Melaksanakan Survey GAKIN terhadap 1 mahasiswa: Mahasiswa Test.', $d['daily_activities'][0]['description']);
+        $this->assertSame(['date', 'start_time', 'end_time', 'description', 'locations'], array_keys($d['daily_activities'][0]));
         $json = json_encode($d);
         foreach (['income', 'latitude', 'conclusion survey', 'answers', 'signature', 'Rp600', '124.8'] as $sensitive) {
             $this->assertStringNotContainsString($sensitive, $json);
@@ -328,6 +330,17 @@ class SurveyWorkflowTest extends TestCase
         Queue::assertPushed(SyncPangiDraft::class, 1);
     }
 
+    public function test_pangi_client_allows_plain_http_only_for_local_development(): void
+    {
+        $client = app(PangiClient::class);
+        $this->assertTrue($client->allowedBaseUrl('https://pangi.poltekkes-manado.ac.id'));
+        $this->assertFalse($client->allowedBaseUrl('http://127.0.0.1:8080'));
+
+        $this->app['env'] = 'local';
+        $this->assertTrue($client->allowedBaseUrl('http://127.0.0.1:8080'));
+        $this->assertFalse($client->allowedBaseUrl('http://pangi.poltekkes-manado.ac.id'));
+    }
+
     public function test_pangi_client_enforces_remote_owner_and_job_respects_lock(): void
     {
         $t = $this->makeTravel();
@@ -341,7 +354,7 @@ class SurveyWorkflowTest extends TestCase
             $this->assertEquals(403, $e->getStatusCode());
         }
         Http::swap(new Factory);
-        Http::fake(['*/report-status' => Http::response(['data' => ['locked' => true]]), '*/trips/*' => Http::response(['data' => ['user_uuid' => $this->worker->integration->external_user_id, 'status' => 'active']])]);
+        Http::fake(['*/report-status' => Http::response(['data' => ['locked' => true]]), '*/trips/*' => Http::response(['data' => ['user_uuid' => $this->worker->nip, 'status' => 'active']])]);
         app(TravelReportBuilder::class)->prepare($t);
         $t->refresh();
         (new SyncPangiDraft($t->id, $t->draft_hash))->handle(app(PangiClient::class));
@@ -410,7 +423,7 @@ class SurveyWorkflowTest extends TestCase
         $travel->refresh();
         $this->assertSame('Periksa hasil bersama koordinator.', $travel->draft['follow_up']);
         $base = rtrim(config('pangi.base_url'), '/').'/api/integrations/gakin/trips/'.$travel->pangi_trip_id;
-        Http::fake([$base => Http::response(['data' => ['user_uuid' => $this->worker->integration->external_user_id, 'status' => 'active']]), $base.'/report-status' => Http::response(['data' => ['locked' => false]]), $base.'/report-draft' => Http::response(['data' => ['saved' => true]])]);
+        Http::fake([$base => Http::response(['data' => ['user_uuid' => $this->worker->nip, 'status' => 'active']]), $base.'/report-status' => Http::response(['data' => ['locked' => false]]), $base.'/report-draft' => Http::response(['data' => ['saved' => true]])]);
         $job = new SyncPangiDraft($travel->id, $travel->draft_hash);
         $job->handle(app(PangiClient::class));
         $job->handle(app(PangiClient::class));
@@ -418,5 +431,70 @@ class SurveyWorkflowTest extends TestCase
         $this->assertNotNull($travel->fresh()->synced_at);
         Http::assertSentCount(3);
         Http::assertSent(fn ($request) => $request->method() === 'PUT' && $request->hasHeader('Idempotency-Key', $travel->idempotency_key) && $request['follow_up'] === 'Periksa hasil bersama koordinator.');
+    }
+
+    public function test_surveyor_records_failed_visit_with_private_evidence_and_can_retry(): void
+    {
+        $url = '/assignments/'.$this->assignment->uuid.'/fail';
+        $this->actingAs($this->worker)->post($url, ['reason' => 'tidak_di_rumah', 'notes' => 'Rumah terkunci', 'evidence' => [UploadedFile::fake()->image('panggilan.png', 2400, 1200)]])
+            ->assertRedirect()->assertSessionHas('status', 'Survey Mahasiswa Test dicatat gagal: Tidak di rumah. Penugasan tetap dapat dicoba lagi.');
+
+        $failure = $this->assignment->failures()->sole();
+        $this->assertSame('gagal_survey', $this->assignment->fresh()->status);
+        $this->assertSame('Rumah terkunci', $failure->notes);
+        $this->assertCount(1, $failure->evidence);
+        [$width] = getimagesizefromstring(Storage::disk('local')->get($failure->evidence[0]['path']));
+        $this->assertSame(1920, $width);
+        $this->get('/tasks')->assertOk()->assertSee('Gagal survey · 09 Oct 2026 09:00 WITA')->assertSee('Tidak di rumah — Rumah terkunci')->assertSee('/survey-failures/'.$failure->uuid.'/evidence/0');
+        $this->get('/survey-failures/'.$failure->uuid.'/evidence/0')->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $this->get('/survey-failures/'.$failure->uuid.'/evidence/1')->assertNotFound();
+
+        $other = User::factory()->create(['active' => true, 'must_change_password' => false]);
+        $other->assignRole('surveyor');
+        $this->actingAs($other)->get('/survey-failures/'.$failure->uuid.'/evidence/0')->assertForbidden();
+        $this->post($url, ['reason' => 'tidak_di_rumah'])->assertForbidden();
+
+        $this->survey();
+        $this->assertSame('sedang_disurvey', $this->assignment->fresh()->status);
+    }
+
+    public function test_failed_visit_requires_reason_note_for_other_and_image_evidence(): void
+    {
+        $url = '/assignments/'.$this->assignment->uuid.'/fail';
+        $bag = 'failure-'.$this->assignment->uuid;
+        $this->actingAs($this->worker);
+
+        $this->post($url, [])->assertSessionHasErrors(['reason' => 'Pilih alasan survey gagal.'], null, $bag);
+        $this->post($url, ['reason' => 'lainnya'])->assertSessionHasErrors(['notes' => 'Tuliskan alasan lainnya.'], null, $bag);
+        $this->post($url, ['reason' => 'tidak_dapat_dihubungi', 'evidence' => [UploadedFile::fake()->create('catatan.pdf', 10, 'application/pdf')]])
+            ->assertSessionHasErrors(['evidence.0' => 'Bukti harus berupa gambar JPG, PNG, atau WEBP.'], null, $bag);
+        $this->assertSame(0, $this->assignment->failures()->count());
+
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+        $this->post($url, ['reason' => 'tidak_dapat_dihubungi'])->assertStatus(422);
+    }
+
+    public function test_pangi_report_lists_failed_visits_within_the_trip(): void
+    {
+        $t = $this->makeTravel();
+        $this->assignment->update(['travel_link_id' => $t->id]);
+        $unreachable = SurveyAssignment::factory()->create(['user_id' => $this->worker->id, 'travel_link_id' => $t->id]);
+        $notHome = SurveyAssignment::factory()->create(['user_id' => $this->worker->id, 'travel_link_id' => $t->id]);
+        SurveyFailure::factory()->create(['survey_assignment_id' => $this->assignment->id, 'occurred_at' => '2026-10-09 08:30']);
+        SurveyFailure::factory()->create(['survey_assignment_id' => $unreachable->id, 'reason' => SurveyFailureReason::Other, 'notes' => 'HP tidak aktif sejak pagi', 'occurred_at' => '2026-10-09 08:00']);
+        SurveyFailure::factory()->create(['survey_assignment_id' => $notHome->id, 'occurred_at' => '2026-10-10 14:15']);
+        SurveyFailure::factory()->create(['survey_assignment_id' => $notHome->id, 'occurred_at' => '2027-01-02 10:00']);
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+
+        $d = app(TravelReportBuilder::class)->build($t);
+
+        $this->assertSame(['2026-10-09', '2026-10-10'], array_column($d['daily_activities'], 'date'));
+        $this->assertSame('Melaksanakan Survey GAKIN terhadap 1 mahasiswa: Mahasiswa Test. Survey belum berhasil dilaksanakan terhadap 1 mahasiswa: '.$unreachable->student->name.' (HP tidak aktif sejak pagi).', $d['daily_activities'][0]['description']);
+        $this->assertSame('08:00', $d['daily_activities'][0]['start_time']);
+        $this->assertSame(['Minahasa', 'Manado'], $d['daily_activities'][0]['locations']);
+        $this->assertSame('Survey belum berhasil dilaksanakan terhadap 1 mahasiswa: '.$notHome->student->name.' (tidak di rumah).', $d['daily_activities'][1]['description']);
+        $this->assertSame('Survey GAKIN telah diselesaikan terhadap 1 dari 3 target penugasan. 2 target belum berhasil disurvey karena kendala kunjungan.', $d['result_summary']);
     }
 }

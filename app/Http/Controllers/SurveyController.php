@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\SurveyFailureReason;
 use App\Http\Requests\SaveSurveyRequest;
 use App\Models\Survey;
 use App\Models\SurveyAnswerEvidence;
 use App\Models\SurveyAssignment;
+use App\Models\SurveyFailure;
 use App\Models\SurveyPhoto;
 use App\Services\Audit;
 use App\Services\RecommendationService;
@@ -19,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -29,6 +32,36 @@ class SurveyController extends Controller
         $s = $service->start($assignment);
 
         return redirect('/surveys/'.$s->uuid);
+    }
+
+    public function fail(Request $r, SurveyAssignment $assignment, SurveyService $service): RedirectResponse
+    {
+        $d = $r->validateWithBag('failure-'.$assignment->uuid, [
+            'reason' => ['required', Rule::enum(SurveyFailureReason::class)],
+            'notes' => ['nullable', 'required_if:reason,'.SurveyFailureReason::Other->value, 'string', 'max:200'],
+            'evidence' => ['nullable', 'array', 'max:3'],
+            'evidence.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240', 'dimensions:max_width=10000,max_height=10000'],
+        ], [
+            'reason.required' => 'Pilih alasan survey gagal.',
+            'notes.required_if' => 'Tuliskan alasan lainnya.',
+            'notes.max' => 'Keterangan paling banyak 200 karakter.',
+            'evidence.max' => 'Unggah paling banyak 3 bukti.',
+            'evidence.*.image' => 'Bukti harus berupa gambar JPG, PNG, atau WEBP.',
+            'evidence.*.mimes' => 'Bukti harus berupa gambar JPG, PNG, atau WEBP.',
+            'evidence.*.max' => 'Ukuran setiap bukti paling besar 10 MB.',
+        ]);
+        $failure = $service->fail($assignment, SurveyFailureReason::from($d['reason']), $d['notes'] ?? null, $r->file('evidence', []));
+
+        return back()->with('status', 'Survey '.$assignment->student->name.' dicatat gagal: '.$failure->reasonText().'. Penugasan tetap dapat dicoba lagi.');
+    }
+
+    public function failureEvidence(SurveyFailure $failure, int $index): StreamedResponse
+    {
+        abort_unless($failure->user_id === auth()->id() || auth()->user()->can('surveys.view-all'), 403);
+        $file = $failure->evidence[$index] ?? null;
+        abort_unless($file, 404);
+
+        return Storage::disk('local')->response($file['path'], null, ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'], 'inline');
     }
 
     public function show(Survey $survey, SurveyService $service): View

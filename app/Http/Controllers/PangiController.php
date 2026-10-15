@@ -41,7 +41,7 @@ class PangiController extends Controller
 
     public function connect(Request $r, PangiClient $client): RedirectResponse
     {
-        $d = $r->validate(['trip_uuid' => 'required|uuid']);
+        $d = $r->validate(['trip_uuid' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9-]+$/']]);
         $remote = $client->trip($r->user(), $d['trip_uuid']);
         abort_unless(in_array($remote['status'] ?? '', ['active', 'approved']), 422, 'Perjalanan belum aktif.');
         $t = TravelLink::firstOrCreate(['user_id' => $r->user()->id, 'pangi_trip_id' => $d['trip_uuid']], ['spd_number' => $remote['spd_number'], 'starts_at' => $remote['starts_at'], 'ends_at' => $remote['ends_at'], 'trip_data' => collect($remote)->only(['uuid', 'user_uuid', 'spd_number', 'proposal_uuid', 'assignment_number', 'destination', 'starts_at', 'ends_at', 'status'])->all()]);
