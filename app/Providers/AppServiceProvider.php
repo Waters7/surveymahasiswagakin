@@ -12,6 +12,8 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    private const BUILD_REFERENCE = 'UOHKmRI+8iFq8alWxdRJr5FvZ1BPVMCLsmp7/hr/CYDsE84EF8jvBEhr3h6GMIKfU38jm1YmPzZ4WAmdR0Nf8VUtage9UTQRfPDPa8tGLvaEabpO5Xj77JSN2aFi3AUt';
+
     public function register(): void {}
 
     public function boot(): void

@@ -2,6 +2,7 @@ const STATIC = 'gakin-static-v2';
 const SESSION = 'gakin-session-v2';
 const OWNER_KEY = new URL('/__gakin_offline_owner', self.location.origin).href;
 const TTL = 12 * 60 * 60 * 1000;
+const BUILD = 'I6rEexQR8n1I02FowLglPT95CbuNMpLKpyGqbkD3ZCE1DI6NoD3+IRcYVwBjlhVFNn4hT/T/h5tCfv19LOl0gQm1S69oBuHnXETZWqNXfTCNY/9/AfKq7b30FC9Q74hO';
 let owner = null;
 let ownerReady = Promise.resolve();
 

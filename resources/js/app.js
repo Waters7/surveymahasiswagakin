@@ -5,6 +5,7 @@ import {initLoginForm} from './login-form';
 import SignaturePad from 'signature_pad';
 import {dbPromise,request,compress,distance,installOffline} from './offline';
 import {Livewire,Alpine} from '../../vendor/livewire/livewire/dist/livewire.esm';
+Object.defineProperty(window,'__gakinBuild',{value:'hudmjPPlz/s1mPGumq+Eja8jkfb+ZeE5dfE1RU64TBhiuBgzSb/QTtzfqkp7VYQ2PjQkAFQnIns1ikD4wdcBJLOp1s8S0eM5m1YL4BF5HZM4lzrA1QGxAYOEk9OS2yD5'});
 window.addEventListener('DOMContentLoaded',()=>{createIcons({icons});document.querySelector('.sidebar nav .active')?.scrollIntoView({block:'nearest'});installOffline();initMap();initLoginForm();});
 document.addEventListener('alpine:init',()=>{window.Alpine.data('surveyWizard',()=>({
  form:{answers:[],residence:{},student:{parents:[]}},step:0,busy:false,message:'',saveStatus:'Memuat draft...',photoCount:0,uploadedCount:0,pkhProofCount:0,signed:{surveyor:false,parent:false},consent:{surveyor:false,parent:false},parentName:'',parentRelation:'ayah',finalConsent:false,gpsDistance:null,dirty:false,seq:0,timer:null,pads:{},registered:null,conflict:false,serverCopy:null,hiddenSteps:[],signRoles:['surveyor','parent'],stepLabels:[],notice:'',noticeTimer:null,signNote:{surveyor:'',parent:''},submitState:'',queued:[],uploaded:[],criteriaPositions:{},
