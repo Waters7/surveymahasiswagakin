@@ -94,7 +94,11 @@ class VideoCallSurveyTest extends TestCase
         $this->postJson('/surveys/'.$survey->uuid.'/signatures', ['revision' => $survey->revision, 'role' => 'parent', 'signed_by' => 'Ibu Uji', 'relation' => 'ibu', 'image' => $this->signatureImage(), 'consent' => true])
             ->assertUnprocessable()->assertJsonValidationErrors('role');
         $this->postJson('/surveys/'.$survey->uuid.'/signatures', ['revision' => $survey->revision, 'role' => 'surveyor', 'signed_by' => 'surveyor', 'image' => $this->signatureImage(), 'consent' => true])->assertOk();
-        $this->postJson('/surveys/'.$survey->uuid.'/submit', ['revision' => $survey->fresh()->revision])->assertOk();
+        $this->postJson('/surveys/'.$survey->uuid.'/submit', ['revision' => $survey->fresh()->revision])->assertOk()
+            ->assertJsonPath('redirect', '/surveys/'.$survey->uuid)
+            ->assertSessionHas('status', 'Survey '.$survey->student_snapshot['name'].' berhasil dikirim dan menunggu verifikasi.');
+        $this->assertSame('surveyor', $survey->signatures()->value('role'));
+        $this->assertSame($survey->user->name, $survey->signatures()->value('signed_by'));
 
         $this->assertSame('menunggu_verifikasi', $survey->fresh()->status);
         $this->get('/surveys/'.$survey->uuid)->assertOk();

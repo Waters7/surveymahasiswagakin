@@ -187,6 +187,7 @@ class SurveyController extends Controller
     {
         $d = $r->validate(['revision' => 'required|integer']);
         $service->submit($survey, $d['revision']);
+        session()->flash('status', 'Survey '.$survey->student_snapshot['name'].' berhasil dikirim dan menunggu verifikasi.');
 
         return response()->json(['redirect' => '/surveys/'.$survey->uuid]);
     }
