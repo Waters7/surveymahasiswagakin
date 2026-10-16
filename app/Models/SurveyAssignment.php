@@ -58,6 +58,34 @@ class SurveyAssignment extends Record
         return $this->hasOne(Survey::class);
     }
 
+    /** @var array<string, string> */
+    public const RESULT_LABELS = [
+        'direkomendasikan' => 'Direkomendasikan',
+        'tidak_direkomendasikan' => 'Tidak direkomendasikan',
+        'perlu_tinjauan' => 'Perlu tinjauan',
+        'dalam_verifikasi' => 'Dalam verifikasi',
+        'belum_selesai' => 'Belum selesai',
+    ];
+
+    /**
+     * Hasil akhir penugasan; hanya keputusan verifikator yang dihitung sebagai hasil.
+     */
+    public function resultCategory(): string
+    {
+        $survey = $this->survey;
+
+        return match (true) {
+            $survey?->status === 'tidak_direkomendasikan' => 'tidak_direkomendasikan',
+            $survey?->status === 'disetujui' => match ($survey->recommendation) {
+                'direkomendasikan' => 'direkomendasikan',
+                'tidak_direkomendasikan' => 'tidak_direkomendasikan',
+                default => 'perlu_tinjauan',
+            },
+            in_array($survey?->status, ['menunggu_verifikasi', 'perlu_revisi'], true) => 'dalam_verifikasi',
+            default => 'belum_selesai',
+        };
+    }
+
     public function failures(): HasMany
     {
         return $this->hasMany(SurveyFailure::class);

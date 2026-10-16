@@ -281,6 +281,28 @@ class SurveyWorkflowTest extends TestCase
         $this->assertCount(0, $s->signatures);
     }
 
+    public function test_results_count_only_verifier_decisions_within_access_scope(): void
+    {
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+        $notStarted = SurveyAssignment::factory()->create(['user_id' => $this->worker->id]);
+        $otherSurveyor = SurveyAssignment::factory()->create();
+
+        $this->actingAs($this->admin)->get(route('results.index'))->assertOk()
+            ->assertViewHas('total', 3)
+            ->assertViewHas('summary', fn ($summary) => $summary['dalam_verifikasi'] === 1 && $summary['belum_selesai'] === 2 && $summary['direkomendasikan'] === 0);
+
+        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Hasil sesuai lapangan.'])->assertRedirect();
+        $this->get(route('results.index', ['result' => 'direkomendasikan']))->assertOk()
+            ->assertViewHas('summary', fn ($summary) => $summary['direkomendasikan'] === 1 && $summary['dalam_verifikasi'] === 0)
+            ->assertViewHas('byProgram', fn ($groups) => $groups['Diploma Tiga Farmasi']['direkomendasikan'] === 1)
+            ->assertSee('Mahasiswa Test')->assertDontSee($notStarted->student->name);
+
+        $this->actingAs($this->worker)->get(route('results.index'))->assertOk()
+            ->assertViewHas('total', 2)
+            ->assertSee($notStarted->student->name)->assertDontSee($otherSurveyor->student->name);
+    }
+
     public function test_approval_preserves_locked_result_and_cannot_repeat(): void
     {
         $s = $this->signedSurvey();

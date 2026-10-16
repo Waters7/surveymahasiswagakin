@@ -8,6 +8,7 @@ use App\Http\Controllers\PangiController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SurveyController;
 use App\Http\Controllers\SurveyorReportController;
+use App\Http\Controllers\SurveyResultController;
 use App\Http\Controllers\VerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -43,6 +44,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/media/{photo}', [SurveyController::class, 'media']);
     Route::delete('/media/{photo}', [SurveyController::class, 'removePhoto']);
     Route::get('/surveys/{survey}/pdf', [ReportController::class, 'pdf']);
+    Route::get('/results', [SurveyResultController::class, 'index'])->middleware('can:reports.export')->name('results.index');
     Route::get('/reports', [SurveyorReportController::class, 'index'])->middleware('can:reports.export')->name('reports.index');
     Route::get('/reports/print', [SurveyorReportController::class, 'print'])->middleware('can:reports.export')->name('reports.print');
     Route::get('/reports/results.xlsx', [SurveyorReportController::class, 'excel'])->middleware('can:reports.export')->name('reports.results.excel');
