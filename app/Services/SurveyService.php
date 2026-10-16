@@ -134,7 +134,7 @@ class SurveyService
                 $s->answers()->where('criterion_id', $a['criterion_id'])->update(collect($a)->only(['answer', 'detail', 'notes'])->all());
             }
             if (isset($data['location'])) {
-                $s->location()->updateOrCreate(['survey_id' => $s->id], $data['location'] + ['captured_at' => now()]);
+                $s->location()->updateOrCreate(['survey_id' => $s->id], $data['location'] + ['source' => 'gps', 'accuracy' => null, 'captured_at' => now()]);
                 TravelVisitLog::create(['survey_id' => $s->id, 'event' => 'gps_captured', 'occurred_at' => now()]);
             }
             if (isset($data['student'])) {

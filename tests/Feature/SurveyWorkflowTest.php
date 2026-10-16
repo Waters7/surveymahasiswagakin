@@ -175,6 +175,31 @@ class SurveyWorkflowTest extends TestCase
         $this->postJson('/surveys/'.$s->uuid.'/draft', $this->payload($s))->assertStatus(409);
     }
 
+    public function test_location_picked_on_map_is_saved_without_accuracy_and_labelled(): void
+    {
+        $s = $this->survey();
+        $data = $this->payload($s);
+        $data['location'] = ['latitude' => 1.4751234, 'longitude' => 124.8429876, 'accuracy' => 5, 'source' => 'peta'];
+        $this->postJson('/surveys/'.$s->uuid.'/draft', $data)->assertOk();
+
+        $location = $s->fresh()->location;
+        $this->assertSame('peta', $location->source);
+        $this->assertNull($location->accuracy);
+        $this->assertSame('dipilih surveyor di peta', $location->sourceLabel());
+        $this->getJson('/surveys/'.$s->uuid.'/state')->assertJsonPath('location.source', 'peta');
+
+        $data = $this->payload($s->fresh());
+        $this->postJson('/surveys/'.$s->uuid.'/draft', $data)->assertOk();
+        $this->assertSame('gps', $s->fresh()->location->source);
+        $this->assertEquals(9, $s->fresh()->location->accuracy);
+
+        $data = $this->payload($s->fresh());
+        $data['location']['source'] = 'tebakan';
+        $this->postJson('/surveys/'.$s->uuid.'/draft', $data)->assertUnprocessable()->assertJsonValidationErrors('location.source');
+        $data['location'] = ['latitude' => 1.3, 'longitude' => 124.8];
+        $this->postJson('/surveys/'.$s->uuid.'/draft', $data)->assertUnprocessable()->assertJsonValidationErrors('location.accuracy');
+    }
+
     public function test_invalid_gps_and_unknown_criterion_are_rejected(): void
     {
         $s = $this->survey();

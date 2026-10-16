@@ -68,7 +68,7 @@ class SurveyController extends Controller
     {
         Gate::authorize('view', $survey);
         $survey->load('answers', 'photos', 'signatures', 'location', 'student.program', 'student.address', 'user', 'histories', 'verifications', 'latestVerification.user');
-        $payload = ['uuid' => $survey->uuid, 'revision' => $survey->revision, 'answers' => $survey->answers->map->only(['criterion_id', 'answer', 'detail', 'notes'])->all(), 'pkh' => $survey->pkh, 'recommendation' => $survey->recommendation, 'conclusion' => $survey->conclusion, 'group_photo_reason' => $survey->group_photo_reason, 'residence' => $survey->residence ?? ['ownership' => '', 'household_members' => null, 'income' => null], 'location' => $survey->location?->only(['latitude', 'longitude', 'accuracy']), 'student' => ['parents' => $survey->student_snapshot['parents'] ?? []]];
+        $payload = ['uuid' => $survey->uuid, 'revision' => $survey->revision, 'answers' => $survey->answers->map->only(['criterion_id', 'answer', 'detail', 'notes'])->all(), 'pkh' => $survey->pkh, 'recommendation' => $survey->recommendation, 'conclusion' => $survey->conclusion, 'group_photo_reason' => $survey->group_photo_reason, 'residence' => $survey->residence ?? ['ownership' => '', 'household_members' => null, 'income' => null], 'location' => $survey->location?->only(['latitude', 'longitude', 'accuracy', 'source']), 'student' => ['parents' => $survey->student_snapshot['parents'] ?? []]];
         $suggestion = app(RecommendationService::class)->suggest($payload['answers'], (bool) $survey->pkh, $survey->rules_snapshot, $survey->criteria_snapshot);
         $missing = $service->missing($survey);
 
@@ -79,7 +79,7 @@ class SurveyController extends Controller
     {
         Gate::authorize('view', $survey);
 
-        return response()->json(['uuid' => $survey->uuid, 'revision' => $survey->revision, 'answers' => $survey->answers->map->only(['criterion_id', 'answer', 'detail', 'notes'])->all(), 'pkh' => $survey->pkh, 'recommendation' => $survey->recommendation, 'conclusion' => $survey->conclusion, 'group_photo_reason' => $survey->group_photo_reason, 'residence' => $survey->residence ?? ['ownership' => '', 'household_members' => null, 'income' => null], 'location' => $survey->location?->only(['latitude', 'longitude', 'accuracy']), 'student' => ['parents' => $survey->student_snapshot['parents'] ?? []]]);
+        return response()->json(['uuid' => $survey->uuid, 'revision' => $survey->revision, 'answers' => $survey->answers->map->only(['criterion_id', 'answer', 'detail', 'notes'])->all(), 'pkh' => $survey->pkh, 'recommendation' => $survey->recommendation, 'conclusion' => $survey->conclusion, 'group_photo_reason' => $survey->group_photo_reason, 'residence' => $survey->residence ?? ['ownership' => '', 'household_members' => null, 'income' => null], 'location' => $survey->location?->only(['latitude', 'longitude', 'accuracy', 'source']), 'student' => ['parents' => $survey->student_snapshot['parents'] ?? []]]);
     }
 
     public function save(SaveSurveyRequest $r, Survey $survey, SurveyService $service): JsonResponse
@@ -136,7 +136,7 @@ class SurveyController extends Controller
                 }
                 $path = 'surveys/'.$s->uuid.'/'.Str::uuid().($isPdf ? '.pdf' : '.jpg');
                 Storage::disk('local')->put($path, $bytes);
-                $p = $s->photos()->create(['user_id' => auth()->id(), 'criterion_id' => $d['kind'] === 'evidence' ? $d['criterion_id'] : null, 'kind' => $d['kind'], 'path' => $path, 'sha256' => hash('sha256', $bytes), 'metadata' => ['mime' => $isPdf ? 'application/pdf' : 'image/jpeg', 'original_name' => mb_substr($r->file('photo')->getClientOriginalName(), 0, 255), 'captured_at' => $d['captured_at'] ?? null, 'uploaded_at' => now()->toIso8601String(), 'location' => $s->location?->only(['latitude', 'longitude', 'accuracy']), 'device' => mb_substr($r->userAgent() ?? '', 0, 1000)]]);
+                $p = $s->photos()->create(['user_id' => auth()->id(), 'criterion_id' => $d['kind'] === 'evidence' ? $d['criterion_id'] : null, 'kind' => $d['kind'], 'path' => $path, 'sha256' => hash('sha256', $bytes), 'metadata' => ['mime' => $isPdf ? 'application/pdf' : 'image/jpeg', 'original_name' => mb_substr($r->file('photo')->getClientOriginalName(), 0, 255), 'captured_at' => $d['captured_at'] ?? null, 'uploaded_at' => now()->toIso8601String(), 'location' => $s->location?->only(['latitude', 'longitude', 'accuracy', 'source']), 'device' => mb_substr($r->userAgent() ?? '', 0, 1000)]]);
                 if ($p->criterion_id) {
                     SurveyAnswerEvidence::create(['survey_answer_id' => $s->answers()->where('criterion_id', $p->criterion_id)->firstOrFail()->id, 'survey_photo_id' => $p->id]);
                 }

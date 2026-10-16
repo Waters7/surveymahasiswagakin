@@ -22,7 +22,7 @@
 <div class="attachments">
     @foreach($photos as $p)
     <div class="attachment-group">
-        @if($loop->first)<h1>LAMPIRAN DOKUMENTASI SURVEY</h1><p>{{$survey->student_snapshot['name']}} · {{$survey->uuid}}</p><p>@if($survey->isVideoCall())Metode: survey video call (tanpa GPS)@else Lokasi aktual: {{$survey->location?->latitude}}, {{$survey->location?->longitude}} · Akurasi {{$survey->location?->accuracy}} m @endif</p>@endif
+        @if($loop->first)<h1>LAMPIRAN DOKUMENTASI SURVEY</h1><p>{{$survey->student_snapshot['name']}} · {{$survey->uuid}}</p><p>@if($survey->isVideoCall())Metode: survey video call (tanpa GPS)@else Lokasi aktual: {{$survey->location?->latitude}}, {{$survey->location?->longitude}}@if($survey->location) · {{$survey->location->sourceLabel()}}@endif @endif</p>@endif
         @if($p['image'])<img class="evidence" src="{{$p['image']}}">@else<p><strong>Dokumen PDF: {{$p['filename']}}</strong><br><a href="{{$p['url']}}">Buka lampiran asli (perlu login)</a></p>@endif
         <p class="caption">{{$p['caption']}}</p>
     </div>
