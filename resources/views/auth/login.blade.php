@@ -46,7 +46,7 @@
                 </div>
                 <button class="btn primary" type="submit">Masuk ke ruang kerja <x-icon name="arrow-right" size="17"/></button>
             </form>
-            <p class="login-note">Kesulitan masuk atau belum memiliki akses? Hubungi koordinator GAKIN untuk memeriksa akses akun Anda.</p>
+            <p class="login-note">Kesulitan masuk atau belum memiliki akses? Hubungi koordinator GAKIN untuk memeriksa akses akun Anda.</p><p class="login-version">Survey GAKIN {{app(\App\Services\AppVersion::class)->label()}}</p>
             <small>© {{ date('Y') }} Poltekkes Kemenkes Manado</small>
         </div>
     </section>
