@@ -61,8 +61,8 @@ class SurveyAssignment extends Record
     /** @var array<string, string> */
     public const RESULT_LABELS = [
         'direkomendasikan' => 'Direkomendasikan',
-        'tidak_direkomendasikan' => 'Tidak direkomendasikan',
         'perlu_tinjauan' => 'Perlu tinjauan',
+        'tidak_direkomendasikan' => 'Tidak direkomendasikan',
         'dalam_verifikasi' => 'Dalam verifikasi',
         'belum_selesai' => 'Belum selesai',
     ];

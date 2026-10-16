@@ -306,26 +306,57 @@ class SurveyWorkflowTest extends TestCase
         $this->assertCount(0, $s->signatures);
     }
 
-    public function test_results_count_only_verifier_decisions_within_access_scope(): void
+    public function test_results_dashboard_counts_verifier_decisions_and_explains_them(): void
     {
         $s = $this->signedSurvey();
         app(SurveyService::class)->submit($s, $s->revision);
         $notStarted = SurveyAssignment::factory()->create(['user_id' => $this->worker->id]);
-        $otherSurveyor = SurveyAssignment::factory()->create();
+        SurveyAssignment::factory()->create();
+        SurveyFailure::factory()->create(['survey_assignment_id' => $notStarted->id]);
+        SurveyFailure::factory()->create(['survey_assignment_id' => $notStarted->id, 'reason' => SurveyFailureReason::Other, 'notes' => 'Pindah sementara']);
 
         $this->actingAs($this->admin)->get(route('results.index'))->assertOk()
-            ->assertViewHas('total', 3)
-            ->assertViewHas('summary', fn ($summary) => $summary['dalam_verifikasi'] === 1 && $summary['belum_selesai'] === 2 && $summary['direkomendasikan'] === 0);
+            ->assertViewHas('kpis', fn ($kpis) => $kpis === ['total' => 3, 'submitted' => 1, 'verified' => 0, 'recommended' => 0, 'waiting' => 1]);
 
-        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Hasil sesuai lapangan.'])->assertRedirect();
-        $this->get(route('results.index', ['result' => 'direkomendasikan']))->assertOk()
-            ->assertViewHas('summary', fn ($summary) => $summary['direkomendasikan'] === 1 && $summary['dalam_verifikasi'] === 0)
+        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'revision', 'reason' => 'Foto rumah belum jelas.'])->assertRedirect();
+        $s = $this->sign($s->fresh());
+        $this->actingAs($this->worker)->postJson('/surveys/'.$s->uuid.'/submit', ['revision' => $s->revision])->assertOk();
+        $this->actingAs($this->admin)->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Hasil sesuai lapangan.'])->assertRedirect();
+
+        $this->get(route('results.index'))->assertOk()
+            ->assertViewHas('kpis', fn ($kpis) => $kpis === ['total' => 3, 'submitted' => 1, 'verified' => 1, 'recommended' => 1, 'waiting' => 0])
+            ->assertViewHas('composition', fn ($composition) => $composition['direkomendasikan'] === 1 && $composition['belum_selesai'] === 2)
             ->assertViewHas('byProgram', fn ($groups) => $groups['Diploma Tiga Farmasi']['direkomendasikan'] === 1)
-            ->assertSee('Mahasiswa Test')->assertDontSee($notStarted->student->name);
+            ->assertViewHas('criteria', fn ($criteria) => $criteria->isNotEmpty() && $criteria->every(fn ($row) => $row['percent'] === 100))
+            ->assertSee('100% mahasiswa yang sudah diverifikasi direkomendasikan (1 dari 1).')
+            ->assertSee('Sisa survey terbanyak di Manado: 2 mahasiswa belum selesai.')
+            ->assertSee('1 dari 1 mahasiswa direkomendasikan (100%) sudah memiliki kartu PKH.')
+            ->assertSee('2 kunjungan gagal tercatat; alasan terbanyak: tidak di rumah dan alasan lainnya (masing-masing 1).')
+            ->assertSee('Rata-rata waktu verifikasi kurang dari 1 jam sejak survey dikirim.')
+            ->assertSee('1 survey pernah dikembalikan untuk revisi.');
 
         $this->actingAs($this->worker)->get(route('results.index'))->assertOk()
-            ->assertViewHas('total', 2)
-            ->assertSee($notStarted->student->name)->assertDontSee($otherSurveyor->student->name);
+            ->assertViewHas('kpis', fn ($kpis) => $kpis['total'] === 2);
+    }
+
+    public function test_result_students_filter_by_verification_and_recommendation(): void
+    {
+        $pending = $this->signedSurvey();
+        app(SurveyService::class)->submit($pending, $pending->revision);
+        $decided = fn (string $status, string $recommendation) => tap(SurveyAssignment::factory()->create(['user_id' => $this->worker->id]), function (SurveyAssignment $a) use ($pending, $status, $recommendation) {
+            $pending->fresh()->replicate(['uuid'])->fill(['survey_assignment_id' => $a->id, 'student_id' => $a->student_id, 'status' => $status, 'recommendation' => $recommendation, 'verify_token' => Str::random(64)])->save();
+        });
+        $approved = $decided('disetujui', 'direkomendasikan');
+        $rejected = $decided('tidak_direkomendasikan', 'tidak_direkomendasikan');
+        $notStarted = SurveyAssignment::factory()->create(['user_id' => $this->worker->id]);
+
+        $this->actingAs($this->admin)->get(route('results.students'))->assertOk()
+            ->assertViewHas('counts', fn ($counts) => $counts->all() === ['direkomendasikan' => 1, 'terverifikasi' => 2, 'belum_verifikasi' => 1, 'tidak_direkomendasikan' => 1, 'belum_dikirim' => 1]);
+        $this->get(route('results.students', ['status' => 'belum_verifikasi']))->assertSee('Mahasiswa Test')->assertDontSee($approved->student->name);
+        $this->get(route('results.students', ['status' => 'terverifikasi']))->assertSee($approved->student->name)->assertSee($rejected->student->name)->assertDontSee('Mahasiswa Test');
+        $this->get(route('results.students', ['status' => 'belum_dikirim']))->assertSee($notStarted->student->name)->assertDontSee($rejected->student->name);
+        $this->get(route('results.students', ['recommendation' => 'tidak_direkomendasikan']))->assertSee($rejected->student->name)->assertDontSee('Mahasiswa Test');
+        $this->get(route('results.students', ['status' => 'semua']))->assertSessionHasErrors('status');
     }
 
     public function test_approval_preserves_locked_result_and_cannot_repeat(): void

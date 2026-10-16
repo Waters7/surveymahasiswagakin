@@ -45,6 +45,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::delete('/media/{photo}', [SurveyController::class, 'removePhoto']);
     Route::get('/surveys/{survey}/pdf', [ReportController::class, 'pdf']);
     Route::get('/results', [SurveyResultController::class, 'index'])->middleware('can:reports.export')->name('results.index');
+    Route::get('/results/students', [SurveyResultController::class, 'students'])->middleware('can:reports.export')->name('results.students');
     Route::get('/reports', [SurveyorReportController::class, 'index'])->middleware('can:reports.export')->name('reports.index');
     Route::get('/reports/print', [SurveyorReportController::class, 'print'])->middleware('can:reports.export')->name('reports.print');
     Route::get('/reports/results.xlsx', [SurveyorReportController::class, 'excel'])->middleware('can:reports.export')->name('reports.results.excel');
