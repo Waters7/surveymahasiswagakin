@@ -17,8 +17,11 @@ class SurveyPolicy
         return $u->active && $u->can('surveys.work') && $s->user_id === $u->id && $s->editable();
     }
 
+    /**
+     * Verifikator tidak boleh memeriksa survey yang dikerjakannya sendiri; hanya super-admin yang dikecualikan.
+     */
     public function verify(User $u, Survey $s): bool
     {
-        return $u->active && $u->can('surveys.verify') && $u->id !== $s->user_id && $s->status === 'menunggu_verifikasi';
+        return $u->active && $u->can('surveys.verify') && ($u->id !== $s->user_id || $u->hasRole('super-admin')) && $s->status === 'menunggu_verifikasi';
     }
 }

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\SurveyFailureReason;
 use App\Jobs\SyncPangiDraft;
+use App\Models\AuditLog;
 use App\Models\ImportBatch;
 use App\Models\Student;
 use App\Models\StudyProgram;
@@ -196,6 +197,23 @@ class SurveyWorkflowTest extends TestCase
         $this->assertNull($s->fresh()->verify_token);
         $this->assertTrue($s->fresh()->editable());
         $this->assertCount(0, $s->fresh()->signatures);
+    }
+
+    public function test_only_super_admin_may_verify_a_survey_they_did_themselves(): void
+    {
+        $this->worker->assignRole('super-admin');
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+
+        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Diperiksa langsung oleh super-admin.'])->assertRedirect();
+
+        $this->assertSame('disetujui', $s->fresh()->status);
+        $this->assertTrue(AuditLog::where('action', 'survey.approve')->sole()->after['self_verified']);
+
+        $verifier = User::factory()->create(['active' => true, 'must_change_password' => false]);
+        $verifier->syncRoles(['verifikator', 'surveyor']);
+        $this->assertFalse($verifier->can('verify', new Survey(['user_id' => $verifier->id, 'status' => 'menunggu_verifikasi'])));
+        $this->assertTrue($verifier->can('verify', new Survey(['user_id' => $this->worker->id, 'status' => 'menunggu_verifikasi'])));
     }
 
     public function test_approval_preserves_locked_result_and_cannot_repeat(): void
