@@ -8,7 +8,7 @@ class AssignmentQuery
 {
     public static function filtered($user, array $filters = [])
     {
-        $q = SurveyAssignment::with(['student.program', 'student.address', 'student.parents', 'user', 'survey', 'period', 'latestFailure']);
+        $q = SurveyAssignment::with(['student.program', 'student.address', 'student.parents', 'user', 'survey.latestVerification', 'period', 'latestFailure']);
         if (! $user->can('surveys.view-all')) {
             $q->where('user_id', $user->id);
         }

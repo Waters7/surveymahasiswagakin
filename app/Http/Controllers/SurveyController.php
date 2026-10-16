@@ -67,7 +67,7 @@ class SurveyController extends Controller
     public function show(Survey $survey, SurveyService $service): View
     {
         Gate::authorize('view', $survey);
-        $survey->load('answers', 'photos', 'signatures', 'location', 'student.program', 'student.address', 'user', 'histories', 'verifications');
+        $survey->load('answers', 'photos', 'signatures', 'location', 'student.program', 'student.address', 'user', 'histories', 'verifications', 'latestVerification.user');
         $payload = ['uuid' => $survey->uuid, 'revision' => $survey->revision, 'answers' => $survey->answers->map->only(['criterion_id', 'answer', 'detail', 'notes'])->all(), 'pkh' => $survey->pkh, 'recommendation' => $survey->recommendation, 'conclusion' => $survey->conclusion, 'group_photo_reason' => $survey->group_photo_reason, 'residence' => $survey->residence ?? ['ownership' => '', 'household_members' => null, 'income' => null], 'location' => $survey->location?->only(['latitude', 'longitude', 'accuracy']), 'student' => ['parents' => $survey->student_snapshot['parents'] ?? []]];
         $suggestion = app(RecommendationService::class)->suggest($payload['answers'], (bool) $survey->pkh, $survey->rules_snapshot, $survey->criteria_snapshot);
         $missing = $service->missing($survey);

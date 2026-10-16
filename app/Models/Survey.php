@@ -57,6 +57,11 @@ class Survey extends Record
         return $this->hasMany(SurveyVerification::class);
     }
 
+    public function latestVerification(): HasOne
+    {
+        return $this->hasOne(SurveyVerification::class)->latestOfMany();
+    }
+
     public function histories(): HasMany
     {
         return $this->hasMany(SurveyStatusHistory::class);

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\SurveyFailureReason;
+use App\Enums\SurveyMethod;
 use App\Jobs\SyncPangiDraft;
 use App\Models\AuditLog;
 use App\Models\ImportBatch;
@@ -27,6 +28,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -89,9 +91,16 @@ class SurveyWorkflowTest extends TestCase
         imagedestroy($im);
         Storage::disk('local')->put('pkh-test.png', $bytes);
         $s->photos()->create(['user_id' => $this->worker->id, 'kind' => 'pkh', 'path' => 'pkh-test.png', 'sha256' => hash('sha256', $bytes), 'metadata' => []]);
+        Storage::disk('local')->put('signatures/sample.png', $bytes);
+
+        return $this->sign($s);
+    }
+
+    private function sign(Survey $s): Survey
+    {
         foreach (['surveyor', 'parent'] as $role) {
             $path = 'signatures/'.$role.'.png';
-            Storage::disk('local')->put($path, $bytes);
+            Storage::disk('local')->copy('signatures/sample.png', $path);
             $s->signatures()->create(['role' => $role, 'signed_by' => 'Penanda Test', 'path' => $path, 'document_hash' => app(SurveyService::class)->digest($s), 'signed_at' => now()]);
         }
 
@@ -216,6 +225,62 @@ class SurveyWorkflowTest extends TestCase
         $this->assertTrue($verifier->can('verify', new Survey(['user_id' => $this->worker->id, 'status' => 'menunggu_verifikasi'])));
     }
 
+    public function test_verification_queue_lists_both_methods_for_verifiers_only(): void
+    {
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+        $call = SurveyAssignment::factory()->create(['user_id' => $this->worker->id, 'method' => SurveyMethod::VideoCall]);
+        $videoCall = $s->fresh()->replicate(['uuid']);
+        $videoCall->fill(['survey_assignment_id' => $call->id, 'student_id' => $call->student_id, 'method' => SurveyMethod::VideoCall, 'verify_token' => Str::random(64)])->save();
+
+        $this->actingAs($this->admin)->get(route('verifications.index'))->assertOk()
+            ->assertSee('Mahasiswa Test')->assertSee($call->student->name)->assertSee('/surveys/'.$videoCall->uuid.'#verifikasi')
+            ->assertViewHas('counts', fn ($counts) => (int) $counts['menunggu_verifikasi'] === 2);
+        $this->get(route('verifications.index', ['method' => 'video_call']))->assertSee($call->student->name)->assertDontSee('Mahasiswa Test');
+
+        $this->worker->assignRole('verifikator');
+        $this->actingAs($this->worker)->get(route('verifications.index'))->assertOk()->assertSee('Survey Anda')->assertDontSee('#verifikasi');
+
+        $leader = User::factory()->create(['active' => true, 'must_change_password' => false]);
+        $leader->assignRole('pimpinan');
+        $this->actingAs($leader)->get(route('verifications.index'))->assertForbidden();
+        $this->get('/')->assertDontSee(route('verifications.index'));
+    }
+
+    public function test_revision_note_reaches_surveyor_who_can_resubmit(): void
+    {
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+        $this->actingAs($this->admin)->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'revision', 'reason' => 'Foto rumah belum jelas, mohon diulang.'])->assertRedirect();
+
+        $this->actingAs($this->worker)->get('/surveys/'.$s->uuid)->assertSee('Perlu revisi dari verifikator')->assertSee('Foto rumah belum jelas, mohon diulang.');
+        $this->get('/tasks')->assertSee('Perbaiki revisi')->assertSee('Foto rumah belum jelas, mohon diulang.');
+
+        $s = $this->sign($s->fresh());
+        $this->postJson('/surveys/'.$s->uuid.'/submit', ['revision' => $s->revision])->assertOk();
+        $this->assertSame('menunggu_verifikasi', $s->fresh()->status);
+        $this->assertSame('menunggu_verifikasi', $this->assignment->fresh()->status);
+    }
+
+    public function test_verifier_can_reopen_a_decided_survey_only_for_revision(): void
+    {
+        $s = $this->signedSurvey();
+        app(SurveyService::class)->submit($s, $s->revision);
+        $this->actingAs($this->admin)->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Hasil sesuai lapangan.'])->assertRedirect();
+
+        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'reject', 'reason' => 'Keputusan diubah.'])->assertForbidden();
+        $this->get('/surveys/'.$s->uuid)->assertSee('Buka kembali untuk revisi');
+        $this->actingAs($this->worker)->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'revision', 'reason' => 'Ingin mengubah isian.'])->assertForbidden();
+
+        $this->actingAs($this->admin)->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'revision', 'reason' => 'NIK orang tua keliru.'])->assertRedirect();
+
+        $s->refresh();
+        $this->assertSame('perlu_revisi', $s->status);
+        $this->assertTrue($s->editable());
+        $this->assertNull($s->verify_token);
+        $this->assertCount(0, $s->signatures);
+    }
+
     public function test_approval_preserves_locked_result_and_cannot_repeat(): void
     {
         $s = $this->signedSurvey();
@@ -223,7 +288,7 @@ class SurveyWorkflowTest extends TestCase
         $this->actingAs($this->admin)->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Bukti telah diperiksa lengkap.'])->assertRedirect();
         $this->assertEquals('disetujui', $s->fresh()->status);
         $this->assertNotNull($s->fresh()->locked_at);
-        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'revision', 'reason' => 'Another change'])->assertForbidden();
+        $this->post('/surveys/'.$s->uuid.'/verify', ['decision' => 'approve', 'reason' => 'Persetujuan ulang'])->assertForbidden();
     }
 
     public function test_editing_content_invalidates_both_signatures(): void

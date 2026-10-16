@@ -24,4 +24,12 @@ class SurveyPolicy
     {
         return $u->active && $u->can('surveys.verify') && ($u->id !== $s->user_id || $u->hasRole('super-admin')) && $s->status === 'menunggu_verifikasi';
     }
+
+    /**
+     * Survey yang sudah diputuskan dapat dikembalikan ke surveyor untuk revisi dengan aturan pemeriksa yang sama.
+     */
+    public function reopen(User $u, Survey $s): bool
+    {
+        return $u->active && $u->can('surveys.verify') && ($u->id !== $s->user_id || $u->hasRole('super-admin')) && in_array($s->status, ['disetujui', 'tidak_direkomendasikan'], true);
+    }
 }

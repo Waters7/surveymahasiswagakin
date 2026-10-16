@@ -237,7 +237,7 @@ class SurveyService
     {
         DB::transaction(function () use ($s, $decision, $reason) {
             $s = Survey::lockForUpdate()->findOrFail($s->id);
-            Gate::authorize('verify', $s);
+            Gate::authorize($decision === 'revision' && $s->status !== 'menunggu_verifikasi' ? 'reopen' : 'verify', $s);
             $next = match ($decision) {
                 'approve' => 'disetujui','reject' => 'tidak_direkomendasikan','revision' => 'perlu_revisi'
             };
@@ -258,7 +258,7 @@ class SurveyService
             $s->assignment->update(['status' => $next]);
             $s->histories()->create(['user_id' => auth()->id(), 'from_status' => $from, 'to_status' => $next, 'reason' => $reason]);
             Audit::record('survey.'.$decision, $s, ['status' => $from], ['status' => $next, 'reason' => $reason, 'self_verified' => $s->user_id === auth()->id()]);
-            $s->user->notify(new SurveyNotice('Survey '.$s->student->name.': '.str_replace('_', ' ', $next), '/surveys/'.$s->uuid));
+            $s->user->notify(new SurveyNotice('Survey '.$s->student->name.': '.str_replace('_', ' ', $next).($decision === 'revision' ? ' — '.Str::limit($reason, 120) : ''), '/surveys/'.$s->uuid));
         });
     }
 }
