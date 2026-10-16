@@ -110,23 +110,23 @@ class AdminController extends Controller
 
     public function userSave(Request $r, ?User $user = null): RedirectResponse
     {
-        $d = $r->validate(['name' => 'required|string|max:255', 'email' => ['required', 'email', Rule::unique('users')->ignore($user?->id)], 'nip' => ['nullable', 'regex:/^\d{18}$/', Rule::unique('users')->ignore($user?->id)], 'phone' => 'nullable|string|max:30', 'unit' => 'nullable|string|max:255', 'position' => 'nullable|string|max:255', 'role' => 'required|exists:roles,name', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128'], ['nip.regex' => 'NIP harus 18 digit angka.']);
+        $d = $r->validate(['name' => 'required|string|max:255', 'email' => ['required', 'email', Rule::unique('users')->ignore($user?->id)], 'nip' => ['nullable', 'regex:/^\d{18}$/', Rule::unique('users')->ignore($user?->id)], 'phone' => 'nullable|string|max:30', 'unit' => 'nullable|string|max:255', 'position' => 'nullable|string|max:255', 'roles' => 'required|array|min:1', 'roles.*' => 'string|distinct|exists:roles,name', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128'], ['nip.regex' => 'NIP harus 18 digit angka.', 'roles.required' => 'Pilih minimal satu peran.', 'roles.min' => 'Pilih minimal satu peran.']);
         if ((! $user || (! $user->active && $d['active'])) && empty($d['password'])) {
             throw ValidationException::withMessages(['password' => $user ? 'Password awal wajib diisi untuk mengaktifkan akun.' : 'Password awal wajib diisi untuk pengguna baru.']);
         }
-        if ($user?->id === auth()->id() && (! $d['active'] || $d['role'] !== 'super-admin')) {
-            throw ValidationException::withMessages(['role' => 'Akun admin Anda sendiri tidak boleh dinonaktifkan atau diturunkan perannya.']);
+        if ($user?->id === auth()->id() && (! $d['active'] || ! in_array('super-admin', $d['roles'], true))) {
+            throw ValidationException::withMessages(['roles' => 'Akun admin Anda sendiri tidak boleh dinonaktifkan atau dilepas dari peran super-admin.']);
         }
         DB::transaction(function () use ($d, $user) {
             $u = $user ?? new User;
-            $u->fill(collect($d)->except(['role', 'password'])->all());
+            $u->fill(collect($d)->except(['roles', 'password'])->all());
             if (! empty($d['password'])) {
                 $u->password = $d['password'];
                 $u->must_change_password = true;
             }
             $u->save();
-            $u->syncRoles([$d['role']]);
-            Audit::record('user.saved', $u, [], ['role' => $d['role'], 'active' => (bool) $d['active']]);
+            $u->syncRoles($d['roles']);
+            Audit::record('user.saved', $u, [], ['roles' => $d['roles'], 'active' => (bool) $d['active']]);
         });
 
         return redirect()->route('users.index')->with('status', 'Pengguna '.$d['name'].' disimpan.'.(empty($d['password']) ? '' : ' Password baru wajib diganti saat login berikutnya.'));

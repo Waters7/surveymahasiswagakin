@@ -4,7 +4,7 @@
 @php
     $roleLabel = fn (string $role): string => \Illuminate\Support\Str::of($role)->replace('-', ' ')->title();
     $isSelf = $user?->id === auth()->id();
-    $currentRole = old('role', $user?->roles->first()?->name ?? ($roles->contains('surveyor') ? 'surveyor' : $roles->first()));
+    $currentRoles = old('roles', $user ? $user->roles->pluck('name')->all() : [$roles->contains('surveyor') ? 'surveyor' : $roles->first()]);
     $active = (string) old('active', $user ? (int) $user->active : 1);
     $pendingEmail = $user && str_ends_with((string) $user->email, '@pending.invalid');
     $identity = [
@@ -48,13 +48,17 @@
             <h2>Akses</h2>
             <p class="muted">Peran menentukan menu dan kewenangan pengguna.</p>
             <fieldset class="field" style="margin-top:18px">
-                <legend>Peran</legend>
+                <legend>Peran <span class="muted">(boleh lebih dari satu)</span></legend>
                 <div class="choice-row">
                     @foreach($roles as $role)
-                        <label class="choice"><input type="radio" name="role" value="{{$role}}" @checked($currentRole === $role) @disabled($isSelf && $role !== 'super-admin') required>{{$roleLabel($role)}}</label>
+                        @php($lockedRole = $isSelf && $role === 'super-admin')
+                        <label class="choice"><input type="checkbox" name="roles[]" value="{{$role}}" @checked($lockedRole || in_array($role, $currentRoles, true)) @disabled($lockedRole)>{{$roleLabel($role)}}</label>
+                        @if($lockedRole)<input type="hidden" name="roles[]" value="super-admin">@endif
                     @endforeach
                 </div>
-                @error('role')<small class="field-error">{{$message}}</small>@enderror
+                <small class="muted">Menu dan kewenangan adalah gabungan semua peran yang dicentang, misalnya Koordinator sekaligus Surveyor.</small>
+                @error('roles')<small class="field-error">{{$message}}</small>@enderror
+                @if($errors->has('roles.*'))<small class="field-error">{{$errors->first('roles.*')}}</small>@endif
             </fieldset>
             <fieldset class="field">
                 <legend>Status akses</legend>
@@ -64,7 +68,7 @@
                 </div>
                 <small class="muted">Akun nonaktif tidak dapat masuk. Mengaktifkan akun yang nonaktif memerlukan password awal.</small>
             </fieldset>
-            @if($isSelf)<div class="hint" style="margin:0">Ini akun Anda sendiri, sehingga peran dan status aksesnya tidak dapat diturunkan.</div>@endif
+            @if($isSelf)<div class="hint" style="margin:0">Ini akun Anda sendiri: peran Super Admin dan status aktif tidak dapat dilepas, tetapi Anda boleh menambah peran lain seperti Surveyor.</div>@endif
         </section>
         <section class="card card-body">
             <h2>{{$user ? 'Reset password' : 'Password awal'}}</h2>

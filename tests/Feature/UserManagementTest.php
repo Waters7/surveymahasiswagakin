@@ -49,7 +49,7 @@ class UserManagementTest extends TestCase
 
     public function test_admin_creates_user_only_with_an_initial_password(): void
     {
-        $data = ['name' => 'Sari Verifikator', 'email' => 'sari@poltekkes-manado.ac.id', 'nip' => '', 'role' => 'verifikator', 'active' => '1'];
+        $data = ['name' => 'Sari Verifikator', 'email' => 'sari@poltekkes-manado.ac.id', 'nip' => '', 'roles' => ['verifikator'], 'active' => '1'];
 
         $this->actingAs($this->admin)->get(route('users.create'))->assertOk()->assertSee('Password awal')->assertSee('value="surveyor" checked', false);
         $this->from(route('users.create'))->post(route('users.store'), $data)
@@ -69,7 +69,7 @@ class UserManagementTest extends TestCase
     public function test_activation_needs_password_and_admin_cannot_demote_own_account(): void
     {
         $inactive = $this->user('Budi Pegawai', 'surveyor', ['active' => false]);
-        $payload = ['name' => 'Budi Pegawai', 'email' => $inactive->email, 'role' => 'surveyor', 'active' => '1'];
+        $payload = ['name' => 'Budi Pegawai', 'email' => $inactive->email, 'roles' => ['surveyor'], 'active' => '1'];
 
         $this->actingAs($this->admin)->get(route('users.edit', $inactive))->assertOk()->assertSee('value="Budi Pegawai"', false)->assertSee('Reset password');
         $this->from(route('users.edit', $inactive))->post(route('users.update', $inactive), $payload)
@@ -77,9 +77,41 @@ class UserManagementTest extends TestCase
             ->assertSessionHasErrors(['password' => 'Password awal wajib diisi untuk mengaktifkan akun.']);
         $this->assertFalse($inactive->fresh()->active);
 
-        $this->from(route('users.edit', $this->admin))->post(route('users.update', $this->admin), ['name' => 'Admin Utama', 'email' => $this->admin->email, 'role' => 'surveyor', 'active' => '1'])
-            ->assertSessionHasErrors('role');
+        $this->from(route('users.edit', $this->admin))->post(route('users.update', $this->admin), ['name' => 'Admin Utama', 'email' => $this->admin->email, 'roles' => ['surveyor'], 'active' => '1'])
+            ->assertSessionHasErrors('roles');
         $this->assertTrue($this->admin->fresh()->hasRole('super-admin'));
+    }
+
+    public function test_user_can_hold_several_roles_and_gets_their_combined_access(): void
+    {
+        $koordinator = $this->user('Yohana Koordinator', 'koordinator');
+        $payload = ['name' => 'Yohana Koordinator', 'email' => $koordinator->email, 'roles' => ['koordinator', 'surveyor'], 'active' => '1'];
+
+        $this->actingAs($this->admin)->post(route('users.update', $koordinator), $payload)->assertRedirect(route('users.index'));
+
+        $koordinator->refresh();
+        $this->assertEqualsCanonicalizing(['koordinator', 'surveyor'], $koordinator->getRoleNames()->all());
+        $this->assertTrue($koordinator->can('assignments.manage'));
+        $this->assertTrue($koordinator->can('surveys.work'));
+        $this->get(route('users.edit', $koordinator))->assertSee('value="koordinator" checked', false)->assertSee('value="surveyor" checked', false);
+        $this->get(route('users.index', ['role' => 'surveyor']))->assertSee('Yohana Koordinator');
+
+        $this->from(route('users.edit', $koordinator))->post(route('users.update', $koordinator), ['roles' => []] + $payload)
+            ->assertSessionHasErrors(['roles' => 'Pilih minimal satu peran.']);
+        $this->post(route('users.update', $koordinator), ['roles' => ['surveyor', 'bukan-peran']] + $payload)->assertSessionHasErrors('roles.1');
+        $this->assertEqualsCanonicalizing(['koordinator', 'surveyor'], $koordinator->fresh()->getRoleNames()->all());
+    }
+
+    public function test_admin_can_add_surveyor_role_to_own_account_but_keeps_super_admin(): void
+    {
+        $this->actingAs($this->admin)->get(route('users.edit', $this->admin))
+            ->assertSee('value="super-admin" checked disabled', false)
+            ->assertSee('<input type="hidden" name="roles[]" value="super-admin">', false);
+
+        $this->post(route('users.update', $this->admin), ['name' => 'Admin Utama', 'email' => $this->admin->email, 'roles' => ['super-admin', 'surveyor'], 'active' => '1'])
+            ->assertRedirect(route('users.index'));
+
+        $this->assertEqualsCanonicalizing(['super-admin', 'surveyor'], $this->admin->fresh()->getRoleNames()->all());
     }
 
     public function test_users_without_permission_cannot_open_or_save_user_forms(): void
@@ -88,7 +120,7 @@ class UserManagementTest extends TestCase
 
         $this->actingAs($surveyor)->get(route('users.create'))->assertForbidden();
         $this->get(route('users.edit', $this->admin))->assertForbidden();
-        $this->post(route('users.store'), ['name' => 'Penyusup', 'email' => 'x@example.test', 'role' => 'super-admin', 'active' => '1', 'password' => 'PasswordAwal123'])->assertForbidden();
+        $this->post(route('users.store'), ['name' => 'Penyusup', 'email' => 'x@example.test', 'roles' => ['super-admin'], 'active' => '1', 'password' => 'PasswordAwal123'])->assertForbidden();
         $this->assertDatabaseMissing('users', ['email' => 'x@example.test']);
     }
 }
