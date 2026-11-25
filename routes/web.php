@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\OnsiteInterviewController;
 use App\Http\Controllers\PangiController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SurveyController;
@@ -21,6 +22,9 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/tasks', [DashboardController::class, 'tasks'])->name('tasks.location');
     Route::get('/tasks/video-call', [DashboardController::class, 'tasks'])->defaults('method', 'video_call')->name('tasks.video-call');
+    Route::get('/tasks/onsite', [OnsiteInterviewController::class, 'index'])->name('tasks.onsite');
+    Route::post('/onsite/{interview}/claim', [OnsiteInterviewController::class, 'claim'])->middleware('throttle:30,1')->name('onsite.claim');
+    Route::post('/onsite/{interview}/release', [OnsiteInterviewController::class, 'release'])->middleware('throttle:30,1')->name('onsite.release');
     Route::get('/map', [DashboardController::class, 'map']);
     Route::get('/verifications', [VerificationController::class, 'index'])->middleware('can:surveys.verify')->name('verifications.index');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');

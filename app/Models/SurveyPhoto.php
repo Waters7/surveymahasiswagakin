@@ -22,6 +22,7 @@ class SurveyPhoto extends Record
             'pkh' => 'Bukti penerima PKH',
             'group' => 'Foto bersama',
             'video_call' => 'Tangkapan layar video call',
+            'onsite' => 'Foto wawancara onsite',
             default => 'Bukti kriteria '.$this->criterion_id,
         };
     }

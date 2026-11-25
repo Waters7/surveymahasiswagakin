@@ -147,7 +147,7 @@ class SurveyService
 
     public function content(Survey $s): array
     {
-        return ['student' => $s->student_snapshot, 'criteria' => $s->criteria_snapshot, 'rules' => $s->rules_snapshot, 'settings' => $s->settings_snapshot, 'answers' => $s->answers()->orderBy('criterion_id')->get(['criterion_id', 'answer', 'detail', 'notes'])->toArray(), 'location' => $s->location?->only(['latitude', 'longitude', 'accuracy', 'captured_at']), 'photos' => $s->photos()->orderBy('id')->get(['uuid', 'criterion_id', 'kind', 'sha256'])->toArray(), 'pkh' => $s->pkh, 'residence' => $s->residence, 'recommendation' => $s->recommendation, 'conclusion' => $s->conclusion, 'group_photo_reason' => $s->group_photo_reason] + ($s->isVideoCall() ? ['method' => SurveyMethod::VideoCall->value] : []);
+        return ['student' => $s->student_snapshot, 'criteria' => $s->criteria_snapshot, 'rules' => $s->rules_snapshot, 'settings' => $s->settings_snapshot, 'answers' => $s->answers()->orderBy('criterion_id')->get(['criterion_id', 'answer', 'detail', 'notes'])->toArray(), 'location' => $s->location?->only(['latitude', 'longitude', 'accuracy', 'captured_at']), 'photos' => $s->photos()->orderBy('id')->get(['uuid', 'criterion_id', 'kind', 'sha256'])->toArray(), 'pkh' => $s->pkh, 'residence' => $s->residence, 'recommendation' => $s->recommendation, 'conclusion' => $s->conclusion, 'group_photo_reason' => $s->group_photo_reason] + ($s->surveyMethod()->isHomeVisit() ? [] : ['method' => $s->surveyMethod()->value]);
     }
 
     public function digest(Survey $s): string
@@ -159,28 +159,29 @@ class SurveyService
     {
         $errors = [];
         $settings = $s->settings_snapshot;
-        if (! $s->student_snapshot['name'] || ! ($s->student_snapshot['address']['address'] ?? null)) {
+        $method = $s->surveyMethod();
+        if (! $s->student_snapshot['name'] || ($method->requiresAddress() && ! ($s->student_snapshot['address']['address'] ?? null))) {
             $errors[] = 'Data mahasiswa dan alamat wajib lengkap.';
         }
-        $isVideoCall = $s->isVideoCall();
+        $isHomeVisit = $method->isHomeVisit();
         foreach ($s->criteria_snapshot as $c) {
             if (! $s->answers->firstWhere('criterion_id', $c['id'])?->answer) {
                 $errors[] = 'Kriteria '.$c['position'].' belum dijawab.';
             }
-            if (! $isVideoCall && $c['evidence_mode'] === 'required' && ! $s->photos->contains('criterion_id', $c['id'])) {
+            if ($isHomeVisit && $c['evidence_mode'] === 'required' && ! $s->photos->contains('criterion_id', $c['id'])) {
                 $errors[] = 'Foto kriteria '.$c['position'].' wajib diisi.';
             }
         }
-        if ($isVideoCall && ! $s->photos->contains('kind', 'video_call')) {
-            $errors[] = 'Unggah minimal 1 tangkapan layar video call.';
+        if (($proof = $method->proofPhotoKind()) && ! $s->photos->contains('kind', $proof)) {
+            $errors[] = $method === SurveyMethod::Onsite ? 'Unggah minimal 1 foto wawancara onsite.' : 'Unggah minimal 1 tangkapan layar video call.';
         }
-        if (! $isVideoCall && ($settings['gps_required'] ?? true) && ! $s->location) {
+        if ($isHomeVisit && ($settings['gps_required'] ?? true) && ! $s->location) {
             $errors[] = 'GPS belum diambil.';
         }
-        if (! $isVideoCall && ($settings['group_photo_required'] ?? true) && ! $s->photos->contains('kind', 'group')) {
+        if ($isHomeVisit && ($settings['group_photo_required'] ?? true) && ! $s->photos->contains('kind', 'group')) {
             $errors[] = 'Foto bersama wajib diunggah.';
         }
-        if (! $isVideoCall && ! ($settings['group_photo_required'] ?? true) && ! $s->photos->contains('kind', 'group') && ! $s->group_photo_reason) {
+        if ($isHomeVisit && ! ($settings['group_photo_required'] ?? true) && ! $s->photos->contains('kind', 'group') && ! $s->group_photo_reason) {
             $errors[] = 'Isi alasan tidak ada foto bersama.';
         }
         if ($s->pkh === true && ! $s->photos->contains('kind', 'pkh')) {

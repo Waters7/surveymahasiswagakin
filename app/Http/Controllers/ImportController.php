@@ -21,10 +21,10 @@ class ImportController extends Controller
 
     public function upload(Request $r, ImportService $service): RedirectResponse
     {
-        $d = $r->validate(['file' => 'required|file|mimes:xlsx,xls|max:20480', 'type' => 'required|in:students,users', 'sheet' => 'nullable|string|max:100', 'mapping' => 'nullable|json', 'survey_method' => 'nullable|in:lokasi,video_call']);
+        $d = $r->validate(['file' => 'required|file|mimes:xlsx,xls,csv,txt|max:20480', 'type' => 'required|in:students,users,onsite', 'sheet' => 'nullable|string|max:100', 'mapping' => 'nullable|json', 'survey_method' => 'nullable|in:lokasi,video_call']);
         $map = empty($d['mapping']) ? null : json_decode($d['mapping'], true);
         if ($map) {
-            $required = $d['type'] === 'users' ? ['name', 'nip', 'phone', 'email', 'position', 'unit'] : ['name', 'nim', 'semester', 'program', 'phone', 'father_job', 'mother_job', 'father_education', 'mother_education', 'father_phone', 'mother_phone', 'address', 'city', 'team', 'schedule'];
+            $required = $d['type'] === 'onsite' ? array_keys(ImportService::ONSITE_MAPPING) : ($d['type'] === 'users' ? ['name', 'nip', 'phone', 'email', 'position', 'unit'] : ['name', 'nim', 'semester', 'program', 'phone', 'father_job', 'mother_job', 'father_education', 'mother_education', 'father_phone', 'mother_phone', 'address', 'city', 'team', 'schedule']);
             abort_unless(is_array($map) && ! array_diff($required, array_keys($map)) && ! array_diff(array_keys($map), $required), 422, 'Mapping kolom tidak lengkap.');
             foreach ($map as $v) {
                 abort_unless(is_int($v) && $v >= 0 && $v <= 200, 422);
@@ -47,6 +47,8 @@ class ImportController extends Controller
             $rows[$d['row']][$b->type === 'users' ? 'nip' : 'nim'] = $d['identifier'];
             if ($b->type === 'students') {
                 $rows[$d['row']]['address'] = $d['address'];
+            }
+            if (in_array($b->type, ['students', 'onsite'], true)) {
                 $rows[$d['row']]['program'] = $d['program'];
             }
             $b->update(['rows' => $rows, 'errors' => $service->errors($rows, $b->type)]);
@@ -61,7 +63,7 @@ class ImportController extends Controller
         $users = User::role('surveyor')->where('active', true)->orderBy('name')->get();
         $teams = collect($batch->rows)->pluck('team')->filter()->unique()->values();
 
-        return view('import-preview', ['batch' => $batch, 'users' => $users, 'periods' => SurveyPeriod::all(), 'suggestedSurveyors' => $teams->mapWithKeys(fn (string $team): array => [$team => app(ImportService::class)->suggestSurveyor($team, $users)?->id])->all()]);
+        return view('import-preview', ['onsiteStatuses' => $batch->type === 'onsite' ? app(ImportService::class)->onsiteStatuses($batch->rows, SurveyPeriod::orderByDesc('starts_at')->value('id')) : [], 'batch' => $batch, 'users' => $users, 'periods' => SurveyPeriod::all(), 'suggestedSurveyors' => $teams->mapWithKeys(fn (string $team): array => [$team => app(ImportService::class)->suggestSurveyor($team, $users)?->id])->all()]);
     }
 
     public function confirm(Request $r, ImportBatch $batch, ImportService $service): RedirectResponse
@@ -69,6 +71,6 @@ class ImportController extends Controller
         $d = $r->validate(['confirm' => 'accepted', 'team_map' => 'nullable|array', 'team_map.*' => 'nullable|integer|exists:users,id', 'period_id' => 'nullable|integer|exists:survey_periods,id']);
         $count = $service->confirm($batch, $d['team_map'] ?? [], $d['period_id'] ?? null);
 
-        return redirect('/imports')->with('status', "$count data berhasil diimpor.");
+        return redirect('/imports')->with('status', $batch->type === 'onsite' ? "$count mahasiswa ditambahkan ke daftar wawancara onsite." : "$count data berhasil diimpor.");
     }
 }

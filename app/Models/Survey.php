@@ -72,6 +72,14 @@ class Survey extends Record
         return $this->belongsTo(TravelLink::class, 'travel_link_id');
     }
 
+    /**
+     * Metode survey; data lama tanpa metode dianggap survey lokasi.
+     */
+    public function surveyMethod(): SurveyMethod
+    {
+        return $this->method ?? SurveyMethod::Location;
+    }
+
     public function isVideoCall(): bool
     {
         return $this->method === SurveyMethod::VideoCall;

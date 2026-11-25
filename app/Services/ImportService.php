@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\SurveyMethod;
 use App\Models\ImportBatch;
+use App\Models\OnsiteInterview;
 use App\Models\Student;
 use App\Models\StudyProgram;
 use App\Models\SurveyAssignment;
@@ -15,6 +17,36 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportService
 {
+    /** Kolom daftar wawancara onsite: NO, NAMA, NIM, PRODI, CATATAN. */
+    public const ONSITE_MAPPING = ['name' => 1, 'nim' => 2, 'program' => 3, 'notes' => 4];
+
+    /**
+     * Keterangan tiap baris daftar wawancara terhadap data yang sudah ada, untuk ditinjau sebelum konfirmasi.
+     *
+     * @param  list<array{nim: string}>  $rows
+     * @return array<int, string>
+     */
+    public function onsiteStatuses(array $rows, ?int $periodId): array
+    {
+        $usualLength = collect($rows)->countBy(fn (array $row): int => strlen($row['nim']))->sortDesc()->keys()->first();
+        $students = Student::with(['assignments' => fn ($query) => $query->when($periodId, fn ($q) => $q->where('survey_period_id', $periodId))->with('survey', 'user')])->whereIn('nim', array_column($rows, 'nim'))->get()->keyBy('nim');
+        $pooled = OnsiteInterview::whereIn('student_id', $students->pluck('id'))->when($periodId, fn ($q) => $q->where('survey_period_id', $periodId))->pluck('student_id')->flip();
+
+        return collect($rows)->map(function (array $row) use ($students, $pooled, $usualLength): string {
+            $student = $students->get($row['nim']);
+            $assignment = $student?->assignments->first();
+            $status = match (true) {
+                ! $student => 'Mahasiswa baru',
+                $pooled->has($student->id) => 'Sudah ada di daftar wawancara · dilewati',
+                $assignment?->survey !== null => 'Sudah disurvey ('.Str::lower(($assignment->method ?? SurveyMethod::Location)->label()).') · tidak dapat diambil',
+                $assignment !== null => 'Ditugaskan '.Str::lower(($assignment->method ?? SurveyMethod::Location)->label()).' ke '.$assignment->user->name.' · dialihkan saat diambil',
+                default => 'Sudah terdaftar',
+            };
+
+            return $status.(strlen($row['nim']) !== $usualLength ? ' · NIM '.strlen($row['nim']).' digit, periksa kembali' : '');
+        })->all();
+    }
+
     public static function phone($value): ?string
     {
         $s = preg_replace('/\D/', '', (string) $value);
@@ -65,10 +97,10 @@ class ImportService
         $ws = $sheet ? $book->getSheetByName($sheet) : ($type === 'users' ? ($book->getSheetByName('LAPORAN DUK') ?? $book->getActiveSheet()) : $book->getActiveSheet());
         abort_unless($ws, 422, 'Sheet tidak ditemukan.');
         $raw = $ws->toArray(null, true, false, false);
-        $map = $mapping ?? ($type === 'users' ? ['name' => 2, 'nip' => 6, 'phone' => 28, 'email' => 30, 'position' => 9, 'unit' => 34] : ['name' => 1, 'nim' => 2, 'semester' => 3, 'program' => 4, 'phone' => 5, 'father_job' => 6, 'mother_job' => 7, 'father_education' => 8, 'mother_education' => 9, 'father_phone' => 10, 'mother_phone' => 11, 'address' => 12, 'city' => 13, 'team' => 14, 'schedule' => 15]);
+        $map = $mapping ?? ($type === 'users' ? ['name' => 2, 'nip' => 6, 'phone' => 28, 'email' => 30, 'position' => 9, 'unit' => 34] : ($type === 'onsite' ? self::ONSITE_MAPPING : ['name' => 1, 'nim' => 2, 'semester' => 3, 'program' => 4, 'phone' => 5, 'father_job' => 6, 'mother_job' => 7, 'father_education' => 8, 'mother_education' => 9, 'father_phone' => 10, 'mother_phone' => 11, 'address' => 12, 'city' => 13, 'team' => 14, 'schedule' => 15]));
         $rows = [];
         foreach ($raw as $index => $row) {
-            $hasStudentId = $type === 'students' && preg_match('/^\d{8,20}$/', trim(ltrim((string) ($row[$map['nim']] ?? ''), "'")));
+            $hasStudentId = in_array($type, ['students', 'onsite'], true) && preg_match('/^\d{8,20}$/', trim(ltrim((string) ($row[$map['nim']] ?? ''), "'")));
             if ((! is_numeric($row[0] ?? null) && ! $hasStudentId) || ! trim((string) ($row[$map['name']] ?? ''))) {
                 continue;
             }
@@ -105,10 +137,10 @@ class ImportService
                 $errors[$i][] = 'Duplikat dalam file.';
             }
             $seen[$id] = true;
-            if ($type === 'users' ? User::withTrashed()->where('nip', $id)->exists() : Student::withTrashed()->where('nim', $id)->exists()) {
+            if ($type !== 'onsite' && ($type === 'users' ? User::withTrashed()->where('nip', $id)->exists() : Student::withTrashed()->where('nim', $id)->exists())) {
                 $errors[$i][] = 'Identifier sudah ada di database.';
             }
-            if ($type === 'students' && empty($r['program'])) {
+            if (in_array($type, ['students', 'onsite'], true) && empty($r['program'])) {
                 $errors[$i][] = 'Prodi kosong.';
             }
             if ($type === 'students' && empty($r['address'])) {
@@ -132,6 +164,14 @@ class ImportService
                 if ($id) {
                     abort_unless(User::role('surveyor')->where('active', true)->whereKey($id)->exists(), 422, 'Pemetaan harus ke akun surveyor aktif.');
                 }
+            }
+            if ($b->type === 'onsite') {
+                abort_unless($periodId, 422, 'Periode wawancara wajib dipilih.');
+                $result = app(OnsiteInterviewService::class)->import($b->rows, $periodId);
+                $b->update(['status' => 'imported']);
+                Audit::record('import.confirmed', $b, [], ['type' => 'onsite'] + $result);
+
+                return $result['added'];
             }
             foreach ($b->rows as $r) {
                 if ($b->type === 'users') {
